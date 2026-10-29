@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private int _blockedImages;
     private int _trackingPixels;
     private IReadOnlyList<Uri> _downloadableImages = [];
+    private IReadOnlyList<string> _availableInlineImages = [];
     private ConcurrentDictionary<string, BitmapSource> _loadedImages = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, string> _loadedImageData = new(StringComparer.Ordinal);
     private readonly HashSet<string> _attemptedImages = new(StringComparer.Ordinal);
@@ -136,6 +137,7 @@ public partial class MainWindow : Window
         FrenchButton.Foreground = Localizer.Language == "fr" ? System.Windows.Media.Brushes.White : (System.Windows.Media.Brush)FindResource("Muted");
         EnglishButton.Background = Localizer.Language == "en" ? (System.Windows.Media.Brush)FindResource("Accent") : System.Windows.Media.Brushes.Transparent;
         EnglishButton.Foreground = Localizer.Language == "en" ? System.Windows.Media.Brushes.White : (System.Windows.Media.Brush)FindResource("Muted");
+        UpdateTrayLanguage();
     }
 
     private string CurrentFolderLabel() => new MailFolder { ServerName = _folder, Delimiter = _folderDelimiter }.DisplayName;
@@ -220,7 +222,8 @@ public partial class MainWindow : Window
             if (cts.IsCancellationRequested || _account != account || _folder != folder) return;
             _messages = messages;
             SetAccountConnected(account.Email, true);
-            ObserveLoadedInbox();
+            MailItem? newMail = ObserveLoadedInbox();
+            if (newMail is not null) await NotifyNewMailAsync(session, account.Email, newMail, cts.Token);
             _searchResults = null;
             FilterMessages();
             FolderTitle.Text = CurrentFolderLabel();
@@ -315,6 +318,7 @@ public partial class MainWindow : Window
         _loadedImageData = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         _attemptedImages.Clear();
         _downloadableImages = [];
+        _availableInlineImages = [];
         _blockedImages = 0;
         _trackingPixels = 0;
         InvitePanel.Visibility = BlockedImagesPanel.Visibility = TrackingNoticePanel.Visibility = Visibility.Collapsed;
@@ -397,6 +401,8 @@ public partial class MainWindow : Window
         _blockedImages = rendered.BlockedImages;
         _trackingPixels = rendered.TrackingPixels;
         _downloadableImages = rendered.DownloadableImages;
+        _availableInlineImages = rendered.InlineImageIds.Where(id =>
+            _selectedContent?.InlineImages.ContainsKey(id) == true).ToArray();
         UpdateImageNotices();
     }
 
@@ -484,9 +490,11 @@ public partial class MainWindow : Window
         BlockedImagesPanel.Visibility = _blockedImages > 0 ? Visibility.Visible : Visibility.Collapsed;
         BlockedImagesLabel.Text = string.Format(Localizer.T("blockedImages"), _blockedImages);
         bool hasRemoteImages = _downloadableImages.Any(uri => !_loadedImages.ContainsKey(uri.AbsoluteUri));
-        LoadImagesButton.Visibility = hasRemoteImages ? Visibility.Visible : Visibility.Collapsed;
+        bool hasInlineImages = _availableInlineImages.Any(id => !_loadedImages.ContainsKey(id));
+        LoadImagesButton.Visibility = hasRemoteImages || hasInlineImages ? Visibility.Visible : Visibility.Collapsed;
         ImagePrivacyHint.Visibility = hasRemoteImages ? Visibility.Visible : Visibility.Collapsed;
-        if (_imageLoadCts is null) LoadImagesButton.Content = Localizer.T("loadImages");
+        if (_imageLoadCts is null) LoadImagesButton.Content = Localizer.T(hasRemoteImages && hasInlineImages
+            ? "loadAllImages" : hasInlineImages ? "showEmbeddedImages" : "loadImages");
         TrackingNoticePanel.Visibility = _trackingPixels > 0 ? Visibility.Visible : Visibility.Collapsed;
         TrackingNoticeLabel.Text = string.Format(Localizer.T("trackingBlocked"), _trackingPixels);
     }
@@ -495,7 +503,8 @@ public partial class MainWindow : Window
     {
         if (_selected is null || string.IsNullOrWhiteSpace(_selectedContent?.HtmlText)) return;
         var item = _selected;
-        string html = _selectedContent.HtmlText;
+        MailContent content = _selectedContent;
+        string html = content.HtmlText;
         var pending = _downloadableImages.Where(uri => !_loadedImages.ContainsKey(uri.AbsoluteUri) &&
             !_attemptedImages.Contains(uri.AbsoluteUri)).Take(20).ToList();
         if (pending.Count == 0)
@@ -503,7 +512,8 @@ public partial class MainWindow : Window
             _attemptedImages.Clear();
             pending = _downloadableImages.Where(uri => !_loadedImages.ContainsKey(uri.AbsoluteUri)).Take(20).ToList();
         }
-        if (pending.Count == 0) return;
+        var pendingInline = _availableInlineImages.Where(id => !_loadedImages.ContainsKey(id)).Take(20).ToList();
+        if (pending.Count == 0 && pendingInline.Count == 0) return;
         foreach (Uri uri in pending) _attemptedImages.Add(uri.AbsoluteUri);
         _imageLoadCts?.Cancel();
         var cts = new CancellationTokenSource();
@@ -514,6 +524,21 @@ public partial class MainWindow : Window
         LoadImagesButton.Content = Localizer.T("loadingImages");
         try
         {
+            foreach (string id in pendingInline)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                if (!content.InlineImages.TryGetValue(id, out InlineMailImage? embedded)) continue;
+                try
+                {
+                    RemoteMailImage? image = await Task.Run(() => RemoteImageLoader.LoadEmbedded(embedded), cts.Token);
+                    if (image is not null)
+                    {
+                        loaded.TryAdd(id, image.Bitmap);
+                        loadedData.TryAdd(id, image.DataUri);
+                    }
+                }
+                catch (Exception) { /* Unsupported embedded images remain blocked. */ }
+            }
             await Parallel.ForEachAsync(pending, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = cts.Token },
                 async (uri, token) =>
                 {
@@ -532,7 +557,8 @@ public partial class MainWindow : Window
             if (cts.IsCancellationRequested || _selected != item || _loadedImages != loaded) return;
             ApplyRenderedMail(SafeHtmlRenderer.Render(html, loaded));
             await ShowTemplateAsync(html, item);
-            if (pending.Any(uri => !loaded.ContainsKey(uri.AbsoluteUri))) StatusLabel.Text = Localizer.T("imageLoadError");
+            if (pending.Any(uri => !loaded.ContainsKey(uri.AbsoluteUri)) ||
+                pendingInline.Any(id => !loaded.ContainsKey(id))) StatusLabel.Text = Localizer.T("imageLoadError");
         }
         catch (OperationCanceledException) { }
         catch (RegexMatchTimeoutException) { StatusLabel.Text = Localizer.T("imageLoadError"); }

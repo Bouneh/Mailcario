@@ -264,6 +264,15 @@ public sealed class ImapSession : IAsyncDisposable
         return MimeReader.ReadMessage(literal);
     }
 
+    public async Task<string> LoadMessagePreviewAsync(string folder, uint uid, CancellationToken token = default)
+    {
+        await SelectAsync(folder, token);
+        // A small, read-only partial fetch avoids downloading large attachments for a notification.
+        var response = await CommandAsync($"UID FETCH {uid} (BODY.PEEK[]<0.32768>)", token, 65_536);
+        byte[]? literal = response.Parts.FirstOrDefault(p => p.Literal is not null)?.Literal;
+        return literal is null ? "" : MimeReader.ReadMessage(literal).PlainText;
+    }
+
     public async Task<IReadOnlyList<CalendarInvite>> LoadInvitesAsync(string folder, IEnumerable<uint> uids, CancellationToken token = default)
     {
         await SelectAsync(folder, token);

@@ -68,6 +68,7 @@ public partial class MainWindow
         FileClientHeading.Text = Localizer.T("clientSettings");
         FileSettings.Content = Localizer.T("settings");
         FileClose.Content = Localizer.T("closeFile");
+        FileQuit.Content = Localizer.T("quitMailcarioTray");
     }
 
     private void ApplyRibbonPreferences()
@@ -145,6 +146,7 @@ public partial class MainWindow
     private void ViewTab_Click(object sender, RoutedEventArgs e) => SelectRibbonTab("view");
     private void FileBack_Click(object sender, RoutedEventArgs e) => FileOverlay.Visibility = Visibility.Collapsed;
     private void FileClose_Click(object sender, RoutedEventArgs e) => FileOverlay.Visibility = Visibility.Collapsed;
+    private void FileQuit_Click(object sender, RoutedEventArgs e) => QuitMailcario();
 
     private void FileSwitchAccount_Click(object sender, RoutedEventArgs e)
     {

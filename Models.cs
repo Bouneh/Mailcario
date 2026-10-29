@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Mailcario;
 
 public sealed class MailAccount
@@ -106,6 +109,35 @@ public sealed class MailContent
     public string HtmlText { get; init; } = "";
     public string? CalendarText { get; init; }
     public IReadOnlyList<string> AttachmentNames { get; init; } = [];
+    public IReadOnlyDictionary<string, InlineMailImage> InlineImages { get; init; } =
+        new Dictionary<string, InlineMailImage>(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed record InlineMailImage(string ContentType, byte[] Bytes)
+{
+    public static string? NormalizeSource(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        string source = value.Trim();
+        if (source.StartsWith("cid:", StringComparison.OrdinalIgnoreCase)) return NormalizeId(source);
+        if (source.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            return "data:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source)));
+        if (source.StartsWith("//", StringComparison.Ordinal) ||
+            Uri.TryCreate(source, UriKind.Absolute, out _)) return null;
+        if (source.Length > 255 || source.Any(char.IsControl)) return null;
+        return "location:" + source.ToLowerInvariant();
+    }
+
+    public static string? NormalizeId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        string id = value.Trim().Trim('<', '>');
+        if (id.StartsWith("cid:", StringComparison.OrdinalIgnoreCase)) id = id[4..];
+        try { id = Uri.UnescapeDataString(id); }
+        catch (UriFormatException) { return null; }
+        if (id.Length is < 1 or > 255 || id.Any(char.IsControl)) return null;
+        return "cid:" + id.ToLowerInvariant();
+    }
 }
 
 public sealed record InboxSnapshot(uint UidValidity, MailItem? Latest);

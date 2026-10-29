@@ -10,7 +10,7 @@ using System.Windows.Media.Imaging;
 namespace Mailcario;
 
 public sealed record SafeMailDocument(FlowDocument Document, int BlockedImages, int TrackingPixels,
-    IReadOnlyList<Uri> DownloadableImages);
+    IReadOnlyList<Uri> DownloadableImages, IReadOnlyList<string> InlineImageIds);
 
 /// <summary>
 /// Converts a small, allowlisted subset of email HTML to inert WPF text elements.
@@ -64,6 +64,7 @@ public static class SafeHtmlRenderer
         int trackingPixels = 0;
         var downloadableImages = new List<Uri>();
         var seenImages = new HashSet<string>(StringComparer.Ordinal);
+        var inlineImageIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (Match token in Tokens.Matches(html))
         {
@@ -93,6 +94,7 @@ public static class SafeHtmlRenderer
                 string attributes = tag.Groups["attrs"].Value;
                 string? source = Attribute(attributes, "src");
                 Uri? uri = ImageUri(source);
+                string? contentId = InlineMailImage.NormalizeSource(source);
                 if (IsTrackingPixel(attributes, uri) || (uri is not null && trackedUrls.Contains(uri.AbsoluteUri)))
                 {
                     trackingPixels++;
@@ -106,6 +108,20 @@ public static class SafeHtmlRenderer
                         var image = new Image { Source = bitmap, Stretch = Stretch.Uniform,
                             MaxWidth = 620, MaxHeight = 1000, HorizontalAlignment = HorizontalAlignment.Left };
                         paragraph.Inlines.Add(new InlineUIContainer(image));
+                        continue;
+                    }
+                }
+                else if (contentId is not null)
+                {
+                    inlineImageIds.Add(contentId);
+                    if (loadedImages?.TryGetValue(contentId, out var embeddedBitmap) == true)
+                    {
+                        paragraph.Inlines.Add(new InlineUIContainer(new Image
+                        {
+                            Source = embeddedBitmap, Stretch = Stretch.Uniform,
+                            MaxWidth = 620, MaxHeight = 1000,
+                            HorizontalAlignment = HorizontalAlignment.Left
+                        }));
                         continue;
                     }
                 }
@@ -166,7 +182,8 @@ public static class SafeHtmlRenderer
                 else inline.Add((name, name == "a" ? SafeLink(tag.Groups["attrs"].Value) : null));
             }
         }
-        return new SafeMailDocument(document, blockedImages, trackingPixels, downloadableImages);
+        return new SafeMailDocument(document, blockedImages, trackingPixels, downloadableImages,
+            inlineImageIds.ToArray());
     }
 
     private static Paragraph NewParagraph(FlowDocument document)

@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Mail;
 using System.Text;
 using System.Text.RegularExpressions;
+using HtmlAgilityPack;
 
 namespace Mailcario;
 
@@ -14,6 +15,7 @@ public static class MimeReader
         public string HtmlText = "";
         public string? CalendarText;
         public List<string> Attachments = [];
+        public Dictionary<string, InlineMailImage> InlineImages = new(StringComparer.OrdinalIgnoreCase);
     }
 
     static MimeReader() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -38,6 +40,7 @@ public static class MimeReader
     {
         var collector = new Collector();
         ReadPart(Encoding.Latin1.GetString(raw), collector, 0);
+        CollectDataImages(collector);
         string body = collector.PlainText;
         if (string.IsNullOrWhiteSpace(body)) body = HtmlToText(collector.HtmlText);
         return new MailContent
@@ -45,7 +48,8 @@ public static class MimeReader
             PlainText = body.Trim(),
             HtmlText = collector.HtmlText,
             CalendarText = collector.CalendarText,
-            AttachmentNames = collector.Attachments
+            AttachmentNames = collector.Attachments,
+            InlineImages = collector.InlineImages
         };
     }
 
@@ -77,6 +81,31 @@ public static class MimeReader
             return;
         }
 
+        if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+            InlineMailImage.NormalizeId(headers.GetValueOrDefault("content-id")) is string contentId)
+        {
+            byte[] imageBytes = DecodeTransfer(body, headers.GetValueOrDefault("content-transfer-encoding") ?? "");
+            if (imageBytes.Length is > 0 and <= 4_000_000)
+            {
+                collector.InlineImages.TryAdd(contentId,
+                    new InlineMailImage(contentType.Split(';')[0].Trim(), imageBytes));
+                if (InlineMailImage.NormalizeSource(headers.GetValueOrDefault("content-location")) is string location)
+                    collector.InlineImages.TryAdd(location,
+                        new InlineMailImage(contentType.Split(';')[0].Trim(), imageBytes));
+            }
+            return;
+        }
+
+        if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+            InlineMailImage.NormalizeSource(headers.GetValueOrDefault("content-location")) is string imageLocation)
+        {
+            byte[] imageBytes = DecodeTransfer(body, headers.GetValueOrDefault("content-transfer-encoding") ?? "");
+            if (imageBytes.Length is > 0 and <= 4_000_000)
+                collector.InlineImages.TryAdd(imageLocation,
+                    new InlineMailImage(contentType.Split(';')[0].Trim(), imageBytes));
+            return;
+        }
+
         if (filename is not null && !contentType.StartsWith("text/calendar", StringComparison.OrdinalIgnoreCase) &&
             !filename.EndsWith(".ics", StringComparison.OrdinalIgnoreCase)) return;
         byte[] decoded = DecodeTransfer(body, headers.GetValueOrDefault("content-transfer-encoding") ?? "");
@@ -97,6 +126,31 @@ public static class MimeReader
         }
     }
 
+    private static void CollectDataImages(Collector collector)
+    {
+        if (collector.HtmlText.Length is 0 or > 2_000_000) return;
+        var document = new HtmlDocument();
+        document.LoadHtml(collector.HtmlText);
+        foreach (HtmlNode image in document.DocumentNode.Descendants("img"))
+        {
+            string? source = image.GetAttributeValue("src", null);
+            if (source is null || source.Length > 5_500_000 ||
+                !source.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase)) continue;
+            int comma = source.IndexOf(',');
+            if (comma < 0 || !source[..comma].EndsWith(";base64", StringComparison.OrdinalIgnoreCase)) continue;
+            string type = source[5..source.IndexOf(';')];
+            string? key = InlineMailImage.NormalizeSource(source);
+            if (key is null) continue;
+            try
+            {
+                byte[] bytes = Convert.FromBase64String(source[(comma + 1)..]);
+                if (bytes.Length is > 0 and <= 4_000_000)
+                    collector.InlineImages.TryAdd(key, new InlineMailImage(type, bytes));
+            }
+            catch (FormatException) { /* Malformed inline data remains blocked. */ }
+        }
+    }
+
     private static string? Parameter(string header, string name)
     {
         var match = Regex.Match(header, @"(?:^|;)\s*" + Regex.Escape(name) + @"\s*=\s*(?:""(?<quoted>[^""]*)""|(?<plain>[^;\s]+))", RegexOptions.IgnoreCase);
@@ -107,8 +161,16 @@ public static class MimeReader
     {
         if (encoding.Equals("base64", StringComparison.OrdinalIgnoreCase))
         {
-            try { return Convert.FromBase64String(Regex.Replace(body, @"\s", "")); }
-            catch (FormatException) { return []; }
+            string encoded = Regex.Replace(body, @"\s", "");
+            try { return Convert.FromBase64String(encoded); }
+            catch (FormatException)
+            {
+                // IMAP notification previews are intentionally partial; decode complete base64 quads.
+                int completeLength = encoded.Length / 4 * 4;
+                if (completeLength < 4) return [];
+                try { return Convert.FromBase64String(encoded[..completeLength]); }
+                catch (FormatException) { return []; }
+            }
         }
         if (!encoding.Equals("quoted-printable", StringComparison.OrdinalIgnoreCase))
             return Encoding.Latin1.GetBytes(body);

@@ -446,6 +446,7 @@
             <TextBlock x:Name="FileClientHeading" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,0,0,10"/>
             <Button x:Name="FileSettings" Style="{StaticResource FileActionButton}" Tag="&#xE713;" Click="SettingsTab_Click" HorizontalAlignment="Left" Margin="0,0,0,3"/>
             <Button x:Name="FileClose" Style="{StaticResource FileActionButton}" Tag="&#xE711;" Click="FileClose_Click" HorizontalAlignment="Left"/>
+            <Button x:Name="FileQuit" Style="{StaticResource FileActionButton}" Tag="&#xE7E8;" Click="FileQuit_Click" HorizontalAlignment="Left" Margin="0,8,0,0"/>
           </StackPanel>
         </ScrollViewer>
       </Border>

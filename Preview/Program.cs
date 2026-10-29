@@ -522,6 +522,61 @@ internal static class Program
                 !rendered.Document.Blocks.OfType<Paragraph>().SelectMany(p => p.Inlines).Any(i => i is InlineUIContainer);
             var bitmap = new WriteableBitmap(10, 10, 96, 96, PixelFormats.Bgra32, null);
             bitmap.Freeze();
+            var inlinePng = new PngBitmapEncoder();
+            inlinePng.Frames.Add(BitmapFrame.Create(bitmap));
+            using var inlineBytes = new MemoryStream();
+            inlinePng.Save(inlineBytes);
+            string inlineMime = "MIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=mailcario-test\r\n\r\n" +
+                "--mailcario-test\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" +
+                "<p>Signature <img src=\"cid:logo@example.invalid\"></p>\r\n" +
+                "--mailcario-test\r\nContent-Type: image/png\r\nContent-ID: <logo@example.invalid>\r\n" +
+                "Content-Transfer-Encoding: base64\r\nContent-Disposition: inline\r\n\r\n" +
+                Convert.ToBase64String(inlineBytes.ToArray()) + "\r\n--mailcario-test--\r\n";
+            MailContent signature = MimeReader.ReadMessage(Encoding.UTF8.GetBytes(inlineMime));
+            const string inlineId = "cid:logo@example.invalid";
+            var hiddenSignature = SafeHtmlRenderer.Render(signature.HtmlText);
+            RemoteMailImage? embeddedImage = signature.InlineImages.TryGetValue(inlineId, out var embedded)
+                ? RemoteImageLoader.LoadEmbedded(embedded) : null;
+            passed &= hiddenSignature.BlockedImages == 1 &&
+                hiddenSignature.DownloadableImages.Count == 0 &&
+                hiddenSignature.InlineImageIds.Contains(inlineId) && embeddedImage is not null;
+            var securityApp = new App();
+            securityApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var signatureWindow = new MainWindow();
+            typeof(MainWindow).GetField("_selectedContent", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(signatureWindow, signature);
+            typeof(MainWindow).GetMethod("ApplyRenderedMail", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(signatureWindow, [hiddenSignature]);
+            passed &= ((Button)signatureWindow.FindName("LoadImagesButton")).Visibility == Visibility.Visible;
+            signatureWindow.Close();
+            ThemeManager.Shutdown();
+            if (embeddedImage is not null)
+            {
+                var visibleSignature = SafeHtmlRenderer.Render(signature.HtmlText,
+                    new Dictionary<string, BitmapSource> { [inlineId] = embeddedImage.Bitmap });
+                string signatureTemplate = HtmlTemplateRenderer.Build(signature.HtmlText,
+                    new Dictionary<string, string> { [inlineId] = embeddedImage.DataUri }, []);
+                passed &= visibleSignature.BlockedImages == 0 &&
+                    signatureTemplate.Contains("data:image/png;base64,", StringComparison.Ordinal) &&
+                    !signatureTemplate.Contains("cid:", StringComparison.OrdinalIgnoreCase);
+            }
+            string locationMime = inlineMime.Replace("cid:logo@example.invalid", "brand.png", StringComparison.Ordinal)
+                .Replace("Content-ID: <logo@example.invalid>", "Content-Location: brand.png", StringComparison.Ordinal);
+            MailContent locatedSignature = MimeReader.ReadMessage(Encoding.UTF8.GetBytes(locationMime));
+            passed &= locatedSignature.InlineImages.ContainsKey("location:brand.png") &&
+                SafeHtmlRenderer.Render(locatedSignature.HtmlText).InlineImageIds.Contains("location:brand.png");
+            string dataSource = "data:image/png;base64," + Convert.ToBase64String(inlineBytes.ToArray());
+            MailContent dataSignature = MimeReader.ReadMessage(Encoding.UTF8.GetBytes(
+                "Content-Type: text/html; charset=utf-8\r\n\r\n<img src=\"" + dataSource + "\">"));
+            string? dataId = InlineMailImage.NormalizeSource(dataSource);
+            passed &= dataId is not null && dataSignature.InlineImages.ContainsKey(dataId) &&
+                SafeHtmlRenderer.Render(dataSignature.HtmlText).InlineImageIds.Contains(dataId);
+            string partialPayload = Convert.ToBase64String(Encoding.UTF8.GetBytes("Bonjour, ceci est un extrait du message."));
+            string partialMime = "Content-Type: text/plain; charset=utf-8\r\n" +
+                "Content-Transfer-Encoding: base64\r\n\r\n" + partialPayload[..^2];
+            passed &= MimeReader.ReadMessage(Encoding.UTF8.GetBytes(partialMime)).PlainText.StartsWith(
+                "Bonjour", StringComparison.Ordinal);
             var withImages = SafeHtmlRenderer.Render(hostile,
                 new Dictionary<string, BitmapSource> { ["https://cdn.example.org/banner.png"] = bitmap });
             passed &= withImages.BlockedImages == 1 && withImages.TrackingPixels == 2 &&
@@ -650,8 +705,6 @@ internal static class Program
         typeof(ThunderbirdImportWindow).GetMethod("ShowCandidates", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(importPreview, [previewCandidates]);
         Render(importPreview, 660, 540, Path.Combine(output, "thunderbird-import.png"));
-        Render(new MailNotificationWindow("hello@example.invalid", "Camille Dupont · Point sur le projet", () => { }),
-            370, 132, Path.Combine(output, "notification.png"));
         Localizer.SetLanguage("en");
         Render(new MainWindow(), 1320, 780, Path.Combine(output, "main-en.png"));
         Render(new AccountWindow(), 520, 760, Path.Combine(output, "account-en.png"));

@@ -44,7 +44,7 @@ Mailcario is a **local Windows email client**. You do not need to host a server 
 
 ![Remote images and tracking pixel notices](docs/images/privacy-dark.png)
 
-Images from the internet are not fetched automatically. A message banner lets you load ordinary remote images when you choose; detected tracking pixels stay blocked.
+Images from the internet are not fetched automatically. A message banner lets you load ordinary remote images when you choose; detected tracking pixels stay blocked. Signature images embedded in the email can also be shown on demand without contacting an external host.
 </details>
 
 ## Get started
@@ -55,6 +55,8 @@ Images from the internet are not fetched automatically. A message banner lets yo
 4. Sign in with your provider. Thunderbird passwords and local messages are not copied.
 
 Mailcario checks for a newer published release when it starts. If one is available, you can choose **Later** or **Download update**. The download is checked against GitHub's SHA-256 digest before installation; Mailcario then restarts automatically. New releases are built and published by GitHub Actions when the project version increases on `main`.
+
+New mail appears in a Windows notification with a short message preview. Closing the window keeps Mailcario running in the notification area; use its icon to reopen the inbox or quit the application.
 
 ### Provider support
 

@@ -45,6 +45,9 @@ public static class HtmlTemplateRenderer
             if (source is not null && SafeHttpUri(source, out Uri? uri) && uri is not null &&
                 permitted.Contains(uri.AbsoluteUri) && imageData.TryGetValue(uri.AbsoluteUri, out string? dataUri))
                 node.SetAttributeValue("src", dataUri);
+            else if (InlineMailImage.NormalizeSource(source) is string contentId &&
+                imageData.TryGetValue(contentId, out string? embeddedData))
+                node.SetAttributeValue("src", embeddedData);
             else node.SetAttributeValue("src", TransparentPixel);
             node.Attributes.Remove("srcset");
         }

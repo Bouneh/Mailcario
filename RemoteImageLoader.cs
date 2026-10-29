@@ -55,7 +55,19 @@ public static class RemoteImageLoader
             if (bytes.Length + read > MaxImageBytes) throw new IOException("The image is too large.");
             bytes.Write(buffer, 0, read);
         }
-        bytes.Position = 0;
+        return DecodeVerifiedImage(bytes.ToArray(), contentType);
+    }
+
+    public static RemoteMailImage? LoadEmbedded(InlineMailImage embedded)
+    {
+        if (!AllowedTypes.Contains(embedded.ContentType) || embedded.Bytes.Length is < 1 or > MaxImageBytes)
+            return null;
+        return DecodeVerifiedImage(embedded.Bytes, embedded.ContentType);
+    }
+
+    private static RemoteMailImage? DecodeVerifiedImage(byte[] data, string contentType)
+    {
+        using var bytes = new MemoryStream(data, writable: false);
         var decoder = BitmapDecoder.Create(bytes, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
         BitmapFrame frame = decoder.Frames[0];
         long width = frame.PixelWidth;
@@ -70,7 +82,7 @@ public static class RemoteImageLoader
         image.StreamSource = bytes;
         image.EndInit();
         image.Freeze();
-        return new RemoteMailImage(image, "data:" + contentType + ";base64," + Convert.ToBase64String(bytes.ToArray()));
+        return new RemoteMailImage(image, "data:" + contentType + ";base64," + Convert.ToBase64String(data));
     }
 
     private static async ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken token)

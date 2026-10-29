@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shell;
 using System.Windows.Threading;
+using System.Text.RegularExpressions;
 
 namespace Mailcario;
 
@@ -18,11 +19,11 @@ public partial class MainWindow
     private readonly HashSet<string> _connectedAccounts = new(StringComparer.OrdinalIgnoreCase);
     private int _activeSyncOperations;
     private DateTimeOffset? _lastSuccessfulSync;
-    private MailNotificationWindow? _mailNotice;
     private static readonly ImageSource MailBadge = CreateMailBadge();
 
     private void InitializeNotifications()
     {
+        InitializeTrayEvents();
         TaskbarItemInfo = new TaskbarItemInfo();
         Activated += (_, _) => ClearMailBadge();
         PreviewMouseDown += (_, _) => ClearMailBadge();
@@ -31,7 +32,6 @@ public partial class MainWindow
         {
             _mailTimer.Stop();
             _monitorCancellation.Cancel();
-            if (_mailNotice?.IsVisible == true) _mailNotice.Close();
         };
     }
 
@@ -106,9 +106,12 @@ public partial class MainWindow
                     await using var session = await ImapSession.ConnectAsync(account, password, _monitorCancellation.Token);
                     InboxSnapshot snapshot = await session.GetInboxSnapshotAsync(_monitorCancellation.Token);
                     SetAccountConnected(account.Email, true);
-                    if (ObserveInbox(account.Email, snapshot.UidValidity, snapshot.Latest) &&
-                        account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase))
-                        refreshActiveInbox = true;
+                    if (ObserveInbox(account.Email, snapshot.UidValidity, snapshot.Latest) && snapshot.Latest is not null)
+                    {
+                        await NotifyNewMailAsync(session, account.Email, snapshot.Latest, _monitorCancellation.Token);
+                        if (account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase))
+                            refreshActiveInbox = true;
+                    }
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception) { SetAccountConnected(account.Email, false); }
@@ -144,32 +147,49 @@ public partial class MainWindow
             return false;
         }
         _inboxCursors[email] = (validity == 0 ? previous.Validity : validity, latest.Uid);
-        NotifyNewMail(email, latest);
         return true;
     }
 
-    private void ObserveLoadedInbox()
+    private MailItem? ObserveLoadedInbox()
     {
-        if (_folder != "INBOX" || _account is null) return;
-        ObserveInbox(_account.Email, 0, _messages.MaxBy(m => m.Uid));
+        if (!_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase) || _account is null) return null;
+        MailItem? latest = _messages.MaxBy(m => m.Uid);
+        return ObserveInbox(_account.Email, 0, latest) ? latest : null;
     }
 
-    private void NotifyNewMail(string email, MailItem item)
+    private async Task NotifyNewMailAsync(ImapSession session, string email, MailItem item, CancellationToken token)
     {
         if (_settings.PlaySound) SystemSounds.Asterisk.Play();
         if (!_settings.NotifyNewMail) return;
+        string preview = "";
+        if (_settings.ShowMessagePreview)
+        {
+            try
+            {
+                string body = await session.LoadMessagePreviewAsync("INBOX", item.Uid, token);
+                preview = Regex.Replace(body, @"\s+", " ").Trim();
+                if (preview.Length > 150) preview = preview[..147] + "…";
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception) { /* A missing preview must not suppress the new-mail alert. */ }
+        }
+        NotifyNewMail(email, item, preview);
+    }
+
+    private void NotifyNewMail(string email, MailItem item, string preview)
+    {
         TaskbarItemInfo.Overlay = MailBadge;
-        if (_mailNotice?.IsVisible == true) _mailNotice.Close();
+        SetMailAttention(true);
         string detail = _settings.ShowMessagePreview
-            ? $"{item.SenderName} · {item.Subject}" : Localizer.T("newMailNotification");
-        _mailNotice = new MailNotificationWindow(email, detail, OpenFromMailNotice);
-        _mailNotice.Show();
+            ? $"{item.SenderName} · {item.Subject}" + (preview.Length > 0 ? "\n" + preview : "")
+            : Localizer.T("newMailNotification");
+        ShowNewMailBalloon(email, detail);
     }
 
     private void OpenFromMailNotice()
     {
-        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
         ClearMailBadge();
     }
@@ -177,8 +197,7 @@ public partial class MainWindow
     private void ClearMailBadge()
     {
         if (TaskbarItemInfo is not null) TaskbarItemInfo.Overlay = null;
-        if (_mailNotice?.IsVisible == true) _mailNotice.Close();
-        _mailNotice = null;
+        SetMailAttention(false);
     }
 
     private static ImageSource CreateMailBadge()
