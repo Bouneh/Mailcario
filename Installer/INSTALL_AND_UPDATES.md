@@ -16,9 +16,11 @@ The output is `dist\Mailcario-Setup-X.Y.Z.exe`. The script reads the version fro
 
 ## Publish a future update
 
-1. Increase `<Version>` in `Mailcario.csproj` to `X.Y.Z` and build a new installer with the same `-GitHubRepository` value.
-2. Create a **published, non-prerelease** GitHub Release tagged `vX.Y.Z`.
-3. Attach the installer with the exact name `Mailcario-Setup-X.Y.Z.exe`. GitHub's release API must expose the asset's `sha256:` digest.
+1. Increase `<Version>` in `Mailcario.csproj` to `X.Y.Z` and commit the changes.
+2. Push the commit to `main` with Git. No browser upload or locally built installer is needed.
+3. `.github/workflows/build-and-release.yml` builds and checks the app on Windows, builds the installer, creates the `vX.Y.Z` tag, and publishes the GitHub Release with `Mailcario-Setup-X.Y.Z.exe`. It verifies GitHub's `sha256:` asset digest before finishing.
+
+Every push and pull request is compiled and checked. A push to `main` only creates a release when its version has not been published yet. Subsequent commits at the same version do not replace an existing installer; increase the version for the next release. The workflow can be rerun from GitHub Actions if a build fails before publication.
 
 When Mailcario opens, it checks the repository's latest release. If its version is newer, the user can choose **Later** or **Download update**. A download is accepted only from GitHub over HTTPS, is limited to 500 MB, and must match the release's SHA-256 digest. The helper waits for Mailcario to close, runs the Inno installer in the existing installation directory, then starts Mailcario again. A failed update shows an error and does not replace the installed application.
 

@@ -54,7 +54,7 @@ Les images distantes ne sont pas téléchargées automatiquement. Un bandeau per
 3. Ajoutez une adresse, ou utilisez **Fichier → Importer depuis Thunderbird** pour reprendre les comptes IMAP et leurs paramètres de serveur.
 4. Connectez-vous auprès de votre fournisseur. Les mots de passe et les messages locaux de Thunderbird ne sont pas copiés.
 
-Au démarrage, Mailcario cherche une version plus récente publiée sur GitHub. Vous pouvez choisir **Plus tard** ou **Télécharger la mise à jour**. Le téléchargement est vérifié avec son empreinte SHA-256, puis Mailcario s’installe et se rouvre automatiquement.
+Au démarrage, Mailcario cherche une version plus récente publiée sur GitHub. Vous pouvez choisir **Plus tard** ou **Télécharger la mise à jour**. Le téléchargement est vérifié avec son empreinte SHA-256, puis Mailcario s’installe et se rouvre automatiquement. Les nouvelles versions sont construites et publiées par GitHub Actions quand la version du projet augmente sur `main`.
 
 ### Fournisseurs
 

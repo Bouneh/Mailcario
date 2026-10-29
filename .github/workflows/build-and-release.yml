@@ -1,0 +1,134 @@
+name: Build and release
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Build and check
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build Mailcario and preview checks
+        shell: pwsh
+        run: |
+          dotnet build Preview/MailcarioPreview.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --thunderbird-import-check
+          if ($LASTEXITCODE -ne 0) { throw 'Thunderbird import check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --security-check
+          if ($LASTEXITCODE -ne 0) { throw 'HTML security check failed.' }
+
+  release:
+    name: Publish Windows installer
+    needs: verify
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    concurrency:
+      group: mailcario-release-main
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Check version and published release
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = ([xml](Get-Content Mailcario.csproj -Raw)).Project.PropertyGroup.Version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must be major.minor.patch.' }
+          $tag = "v$version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json id *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "$tag already has a published release. Increase Version to publish again."
+            'publish=false' >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          $existingTag = git tag --list $tag
+          if ($existingTag) {
+            $tagCommit = git rev-list -n 1 $tag
+            if ($LASTEXITCODE -ne 0 -or $tagCommit.Trim() -ne $env:GITHUB_SHA) {
+              throw "$tag exists at another commit; refusing to publish a mismatched build."
+            }
+          }
+          'publish=true' >> $env:GITHUB_OUTPUT
+
+      - name: Ensure Inno Setup is available
+        if: steps.version.outputs.publish == 'true'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            'C:\Program Files\Inno Setup 7\ISCC.exe',
+            'C:\Program Files (x86)\Inno Setup 7\ISCC.exe',
+            'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+            'C:\Program Files\Inno Setup 6\ISCC.exe'
+          )
+          if (-not ($candidates | Where-Object { Test-Path -LiteralPath $_ })) {
+            choco install innosetup --no-progress --yes
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+          }
+
+      - name: Build installer
+        if: steps.version.outputs.publish == 'true'
+        shell: pwsh
+        run: |
+          ./Installer/build-installer.ps1 -GitHubRepository $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
+          $setup = "Installer/dist/Mailcario-Setup-${{ steps.version.outputs.version }}.exe"
+          if (-not (Test-Path -LiteralPath $setup)) { throw 'Installer is missing.' }
+
+      - name: Create tag and release
+        if: steps.version.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.version.outputs.version }}'
+          $tag = '${{ steps.version.outputs.tag }}'
+          $setup = "Installer/dist/Mailcario-Setup-$version.exe"
+          $sha = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          if (-not (git tag --list $tag)) {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a $tag -m "Mailcario $version"
+            if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed.' }
+            git push origin "refs/tags/$tag"
+            if ($LASTEXITCODE -ne 0) { throw 'Tag push failed.' }
+          }
+          $notes = "Windows x64 installer. See the [English README](https://github.com/$env:GITHUB_REPOSITORY#readme) or [French README](https://github.com/$env:GITHUB_REPOSITORY/blob/main/README.fr.md) for setup and provider support.`n`nSHA-256: ``$sha``"
+          gh release create $tag $setup --repo $env:GITHUB_REPOSITORY --verify-tag --latest --title "Mailcario $version" --generate-notes --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
+          $verified = $false
+          for ($attempt = 0; $attempt -lt 6; $attempt++) {
+            $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Could not verify the published release.' }
+            $asset = @($release.assets | Where-Object { $_.name -eq "Mailcario-Setup-$version.exe" })
+            if (-not $release.draft -and -not $release.prerelease -and $asset.Count -eq 1 -and $asset[0].digest -eq "sha256:$sha") {
+              $verified = $true
+              break
+            }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $verified) { throw 'Release asset or SHA-256 digest does not match the installer.' }
+          Write-Host "Published $($release.html_url) with verified SHA-256 $sha"

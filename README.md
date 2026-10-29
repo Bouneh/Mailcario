@@ -54,7 +54,7 @@ Images from the internet are not fetched automatically. A message banner lets yo
 3. Add an address, or choose **File → Import from Thunderbird** to bring in IMAP account and server settings.
 4. Sign in with your provider. Thunderbird passwords and local messages are not copied.
 
-Mailcario checks for a newer published release when it starts. If one is available, you can choose **Later** or **Download update**. The download is checked against GitHub's SHA-256 digest before installation; Mailcario then restarts automatically.
+Mailcario checks for a newer published release when it starts. If one is available, you can choose **Later** or **Download update**. The download is checked against GitHub's SHA-256 digest before installation; Mailcario then restarts automatically. New releases are built and published by GitHub Actions when the project version increases on `main`.
 
 ### Provider support
 
