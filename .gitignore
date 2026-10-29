@@ -1,0 +1,12 @@
+bin/
+obj/
+oauth-providers.local.json
+Mailcario-preview-*.zip
+Mailcario-preview-*/
+/release*/
+Preview/bin/
+Preview/obj/
+Preview/output-*/
+/Preview/*/
+Updater/bin/
+Updater/obj/

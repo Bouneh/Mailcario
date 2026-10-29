@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="300" viewBox="0 0 880 300" role="img" aria-label="Star history for Bouneh/Mailcario">
+  <rect x="1" y="1" width="878" height="298" rx="12" fill="#FAFCFD" stroke="#DBE7EA"/>
+  <text x="32" y="39" fill="#20343A" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">Star history</text>
+  <text x="846" y="39" text-anchor="end" fill="#11747B" font-family="Segoe UI, Arial, sans-serif" font-size="19" font-weight="700">0 stars</text>
+  <path d="M72,66 V245 H846" fill="none" stroke="#BFD0D5" stroke-width="1"/>
+  <path d="M72,155.5 H846" fill="none" stroke="#E2EBEE" stroke-width="1" stroke-dasharray="4 5"/>
+  <path d="M72.0,245.0 L846.0,245.0" fill="none" stroke="#11747B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="440" y="158" text-anchor="middle" fill="#73838B" font-family="Segoe UI, Arial, sans-serif" font-size="17">The first stars will appear here</text>
+  <text x="72" y="275" fill="#73838B" font-family="Segoe UI, Arial, sans-serif" font-size="12">Oct 2026</text>
+  <text x="846" y="275" text-anchor="end" fill="#73838B" font-family="Segoe UI, Arial, sans-serif" font-size="12">Oct 2026</text>
+</svg>

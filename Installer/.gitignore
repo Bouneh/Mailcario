@@ -1,0 +1,9 @@
+compiler/
+deps/
+dist/
+stage/
+updater-stage/
+smoke-install/
+smoke-update/
+smoke-install.log
+innosetup-*.exe

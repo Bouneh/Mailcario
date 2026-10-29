@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="160" viewBox="0 0 720 160" role="img" aria-labelledby="title">
+  <title id="title">Mailcario</title>
+  <rect x="3" y="3" width="154" height="154" rx="39" fill="#11747B"/>
+  <path d="M43 112V53l37 33 37-33v59" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="189" y="113" fill="#11747B" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="94" font-weight="700" letter-spacing="-4">Mailcario</text>
+</svg>

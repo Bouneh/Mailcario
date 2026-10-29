@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\Mailcario.ico</ApplicationIcon>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Updater\**\*.cs" />
+    <Compile Remove="Preview\**\*.cs" />
+    <Compile Remove="Installer\**\*.cs" />
+    <Resource Include="Assets\Mailcario.ico" />
+    <Resource Include="Assets\Mailcario-512.png" />
+    <Content Include="oauth-providers.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="oauth-providers.local.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('oauth-providers.local.json') and '$(IncludeLocalOAuthConfig)' != 'false'" />
+    <Content Include="update-source.json" CopyToOutputDirectory="PreserveNewest" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.13.1" />
+  </ItemGroup>
+</Project>

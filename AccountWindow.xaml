@@ -1,0 +1,85 @@
+<Window x:Class="Mailcario.AccountWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Mailcario · Account" Icon="Assets/Mailcario-512.png"
+        Width="520" Height="760" MinWidth="480" MinHeight="610"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource Canvas}"
+        FontFamily="Segoe UI" FontSize="13">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="30,27">
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,25">
+        <Image Source="Assets/Mailcario-512.png" Width="43" Height="43"/>
+        <StackPanel Margin="13,0,0,0" VerticalAlignment="Center">
+          <TextBlock x:Name="Heading" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"/>
+          <TextBlock x:Name="SubtitleLabel" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/>
+        </StackPanel>
+      </StackPanel>
+
+      <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="5" Padding="23">
+        <StackPanel>
+          <TextBlock x:Name="ProviderLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+          <UniformGrid Columns="3" Margin="0,0,0,8">
+            <Button x:Name="LapostePreset" Height="38" Margin="0,0,6,6" Click="LapostePreset_Click"/>
+            <Button x:Name="GooglePreset" Height="38" Margin="0,0,6,6" Click="GooglePreset_Click"/>
+            <Button x:Name="MicrosoftPreset" Height="38" Margin="0,0,0,6" Click="MicrosoftPreset_Click"/>
+            <Button x:Name="IcloudPreset" Height="38" Margin="0,0,6,0" Click="IcloudPreset_Click"/>
+            <Button x:Name="ManualPreset" Height="38" Margin="0,0,6,0" Click="ManualPreset_Click"/>
+          </UniformGrid>
+          <TextBlock x:Name="ProviderHint" Foreground="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+          <Button x:Name="GoogleAuthSwitchButton" Style="{StaticResource ChromeButton}" Height="31"
+                  HorizontalAlignment="Left" Margin="0,0,0,12" Visibility="Collapsed"
+                  Click="GoogleAuthSwitchButton_Click"/>
+          <Button x:Name="GoogleHelpButton" Style="{StaticResource ChromeButton}" Height="31"
+                  HorizontalAlignment="Left" Margin="0,0,0,16" Visibility="Collapsed"
+                  Click="GoogleHelpButton_Click"/>
+
+          <TextBlock x:Name="NameLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,7"/>
+          <TextBox x:Name="NameBox" Margin="0,0,0,17"/>
+          <TextBlock x:Name="EmailLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,7"/>
+          <TextBox x:Name="EmailBox" Margin="0,0,0,17" TextChanged="EmailBox_TextChanged"/>
+          <TextBlock x:Name="PasswordLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,7"/>
+          <PasswordBox x:Name="PasswordInput" Margin="0,0,0,9"/>
+          <TextBlock x:Name="StorageNote" Foreground="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,15"/>
+          <Expander x:Name="ServerExpander" Background="{DynamicResource SurfaceAlt}" Foreground="{DynamicResource Ink}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" Padding="13" Margin="0,4,0,0">
+            <Expander.Header><TextBlock x:Name="ServerHeading" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"/></Expander.Header>
+            <StackPanel Margin="0,16,0,2">
+              <TextBlock x:Name="UsernameLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+              <TextBox x:Name="UsernameBox" Margin="0,0,0,13"/>
+              <Grid Margin="0,0,0,13">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="92"/></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                  <TextBlock x:Name="ImapLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                  <TextBox x:Name="ImapBox"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                  <TextBlock x:Name="ImapPortLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                  <TextBox x:Name="ImapPortBox" Text="993"/>
+                </StackPanel>
+              </Grid>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="92"/></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                  <TextBlock x:Name="SmtpLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                  <TextBox x:Name="SmtpBox"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                  <TextBlock x:Name="SmtpPortLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                  <TextBox x:Name="SmtpPortBox" Text="587"/>
+                </StackPanel>
+              </Grid>
+              <TextBlock x:Name="SmtpUsernameLabel" Foreground="{DynamicResource Ink}" FontWeight="SemiBold" Margin="0,13,0,6"/>
+              <TextBox x:Name="SmtpUsernameBox"/>
+              <TextBlock x:Name="SecureNote" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,11,0,0"/>
+            </StackPanel>
+          </Expander>
+        </StackPanel>
+      </Border>
+
+      <TextBlock x:Name="ErrorLabel" Foreground="{DynamicResource ErrorText}" TextWrapping="Wrap" Margin="2,15,0,0"/>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        <Button x:Name="CancelButton" Click="CancelButton_Click" Margin="0,0,9,0"/>
+        <Button x:Name="ConnectButton" Style="{StaticResource AccentButton}" Click="ConnectButton_Click"/>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

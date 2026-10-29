@@ -1,0 +1,23 @@
+<Window x:Class="Mailcario.MailNotificationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="370" Height="132" WindowStyle="None" AllowsTransparency="True"
+        ShowInTaskbar="False" ShowActivated="False" Topmost="True" Background="Transparent"
+        ResizeMode="NoResize" MouseLeftButtonUp="Notification_Click">
+  <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="7" Padding="16"
+          Cursor="Hand">
+    <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="3" Opacity="0.23"/></Border.Effect>
+    <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Border Width="34" Height="34" CornerRadius="4" Background="{DynamicResource AccentSoft}" VerticalAlignment="Top">
+        <TextBlock Text="&#xE715;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{DynamicResource AccentDark}" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Border>
+      <StackPanel Grid.Column="1" Margin="8,0,0,0">
+        <TextBlock x:Name="Heading" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"/>
+        <TextBlock x:Name="Account" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+        <TextBlock x:Name="Detail" FontSize="12" Foreground="{DynamicResource Ink}" Margin="0,7,0,0" TextTrimming="CharacterEllipsis"/>
+        <TextBlock x:Name="Hint" FontSize="11" Foreground="{DynamicResource AccentDark}" Margin="0,5,0,0"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

@@ -1,0 +1,455 @@
+<Window x:Class="Mailcario.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Mailcario" Icon="Assets/Mailcario-512.png"
+        Width="1280" Height="760" MinWidth="1040" MinHeight="600" WindowState="Maximized"
+        WindowStartupLocation="CenterScreen" Background="{DynamicResource Canvas}"
+        FontFamily="Segoe UI" FontSize="13">
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition x:Name="RibbonRow" Height="132"/><RowDefinition Height="*"/><RowDefinition Height="26"/></Grid.RowDefinitions>
+
+    <!-- Main toolbar -->
+    <Border Grid.Row="0" Background="{DynamicResource TitleBar}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1">
+      <Grid Margin="16,0">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+          <Image Source="Assets/Mailcario-512.png" Width="25" Height="25"/>
+          <TextBlock Text="Mailcario" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+        </StackPanel>
+        <Border Grid.Column="1" Background="{DynamicResource SearchField}" BorderBrush="{DynamicResource SearchStroke}" BorderThickness="1" CornerRadius="4" Height="32" MaxWidth="500" MinWidth="245" Margin="0,0,12,0" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="39"/><ColumnDefinition Width="*"/><ColumnDefinition Width="35"/></Grid.ColumnDefinitions>
+            <Button x:Name="SearchButton" Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0" Click="SearchButton_Click" ToolTip="Search">
+              <Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Canvas Width="20" Height="20">
+                  <Ellipse Canvas.Left="2" Canvas.Top="2" Width="11" Height="11" Stroke="{DynamicResource Muted}" StrokeThickness="1.7"/>
+                  <Line X1="11" Y1="11" X2="18" Y2="18" Stroke="{DynamicResource Muted}" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                </Canvas>
+              </Viewbox>
+            </Button>
+            <TextBox x:Name="SearchBox" Grid.Column="1" Background="Transparent" BorderThickness="0" Padding="0,8,0,8" VerticalContentAlignment="Center" TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown"/>
+            <TextBlock x:Name="SearchHint" Grid.Column="1" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+            <Button x:Name="ClearSearchButton" Grid.Column="2" Content="×" FontSize="18" Foreground="{DynamicResource Muted}" Background="Transparent" BorderThickness="0" Padding="0" Visibility="Collapsed" Click="ClearSearchButton_Click" ToolTip="Clear"/>
+          </Grid>
+        </Border>
+        <Button x:Name="RefreshButton" Grid.Column="2" Margin="10,0,10,0" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" Click="RefreshButton_Click">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Foreground="{DynamicResource AccentDark}" Margin="0,0,8,0"/>
+            <TextBlock x:Name="RefreshButtonLabel"/>
+          </StackPanel>
+        </Button>
+        <Button x:Name="AccountButton" Grid.Column="3" Margin="0,0,12,0" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" Click="AccountButton_Click">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE716;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Foreground="{DynamicResource AccentDark}" Margin="0,0,8,0"/>
+            <TextBlock x:Name="AccountButtonLabel"/>
+          </StackPanel>
+        </Button>
+        <Border Grid.Column="4" Background="{DynamicResource SurfaceAlt}" CornerRadius="4" Padding="2" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="FrenchButton" Content="FR" BorderThickness="0" Padding="10,7" Margin="0,0,2,0" Click="FrenchButton_Click"/>
+            <Button x:Name="EnglishButton" Content="EN" BorderThickness="0" Padding="10,7" Click="EnglishButton_Click"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+
+    <!-- Configurable mail ribbon -->
+    <Border Grid.Row="1" x:Name="RibbonRoot" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Margin="13,0" VerticalAlignment="Center">
+          <Button x:Name="FileTabButton" Style="{StaticResource RibbonTabButton}" Click="FileTab_Click" Foreground="{DynamicResource AccentDark}" Margin="0,0,5,0"/>
+          <Button x:Name="HomeTabButton" Style="{StaticResource RibbonTabButton}" Click="HomeTab_Click" Margin="0,0,3,0"/>
+          <Button x:Name="SyncTabButton" Style="{StaticResource RibbonTabButton}" Click="SyncTab_Click" Margin="0,0,3,0"/>
+          <Button x:Name="FolderTabButton" Style="{StaticResource RibbonTabButton}" Click="FolderTab_Click" Margin="0,0,3,0"/>
+          <Button x:Name="ViewTabButton" Style="{StaticResource RibbonTabButton}" Click="ViewTab_Click" Margin="0,0,3,0"/>
+          <Button x:Name="SettingsTabButton" Style="{StaticResource RibbonTabButton}" Click="SettingsTab_Click"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+          <Grid Margin="14,5,14,8">
+            <StackPanel x:Name="HomeRibbon" Orientation="Horizontal" VerticalAlignment="Center">
+              <StackPanel Margin="0,0,10,0">
+                <Button x:Name="RibbonNew" Click="NewButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE715;" BorderBrush="{DynamicResource IconMail}"/>
+                <TextBlock x:Name="RibbonNewGroupCaption" Foreground="{DynamicResource Muted}" FontSize="10" TextAlignment="Center" Margin="0,4,0,0"/>
+              </StackPanel>
+              <Border Width="1" Background="{DynamicResource Stroke}" Margin="0,3,10,3"/>
+              <StackPanel Margin="0,0,10,0">
+                <StackPanel Orientation="Horizontal">
+                  <Button x:Name="RibbonReply" Click="ReplyButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8CA;" BorderBrush="{DynamicResource IconReply}" Margin="0,0,3,0"/>
+                  <Button x:Name="RibbonForward" Click="ForwardButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE89C;" BorderBrush="{DynamicResource IconForward}"/>
+                </StackPanel>
+                <TextBlock x:Name="RibbonReplyGroupCaption" Foreground="{DynamicResource Muted}" FontSize="10" TextAlignment="Center" Margin="0,4,0,0"/>
+              </StackPanel>
+              <Border Width="1" Background="{DynamicResource Stroke}" Margin="0,3,10,3"/>
+              <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                  <Button x:Name="RibbonMarkRead" Click="RibbonMarkRead_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8C3;" BorderBrush="{DynamicResource IconNeutral}" Margin="0,0,3,0"/>
+                  <Button x:Name="RibbonMarkUnread" Click="RibbonMarkUnread_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE715;" BorderBrush="{DynamicResource IconNeutral}" Margin="0,0,3,0"/>
+                  <Button x:Name="RibbonRefresh" Click="RefreshButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE72C;" BorderBrush="{DynamicResource IconSync}"/>
+                  <Button x:Name="RibbonRules" Click="RibbonRules_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE71C;" BorderBrush="{DynamicResource IconFolder}"/>
+                </StackPanel>
+                <TextBlock x:Name="RibbonManageGroupCaption" Foreground="{DynamicResource Muted}" FontSize="10" TextAlignment="Center" Margin="0,4,0,0"/>
+              </StackPanel>
+            </StackPanel>
+            <StackPanel x:Name="SyncRibbon" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+              <Button x:Name="RibbonSyncAll" Click="RibbonSyncAll_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE895;" BorderBrush="{DynamicResource IconSync}" MinWidth="112" Margin="0,0,4,0"/>
+              <Button x:Name="RibbonSyncFolder" Click="RefreshButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE72C;" BorderBrush="{DynamicResource IconSync}" Margin="0,0,4,0"/>
+              <Button x:Name="RibbonCancelSync" Click="RibbonCancelSync_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE711;" BorderBrush="{DynamicResource IconDanger}" Margin="0,0,14,0"/>
+              <CheckBox x:Name="RibbonOffline" VerticalAlignment="Center" Checked="RibbonOffline_Changed" Unchecked="RibbonOffline_Changed"/>
+            </StackPanel>
+            <StackPanel x:Name="FolderRibbon" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+              <Button x:Name="RibbonNewFolder" Click="RibbonNewFolder_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8B7;" BorderBrush="{DynamicResource IconFolder}" Margin="0,0,4,0"/>
+              <Button x:Name="RibbonRenameFolder" Click="RibbonRenameFolder_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8AC;" BorderBrush="{DynamicResource IconFolder}" Margin="0,0,4,0"/>
+              <Button x:Name="RibbonRefreshFolders" Click="RibbonRefreshFolders_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE72C;" BorderBrush="{DynamicResource IconSync}" Margin="0,0,4,0"/>
+              <Button x:Name="RibbonMarkFolderRead" Click="RibbonMarkFolderRead_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8C3;" BorderBrush="{DynamicResource IconNeutral}"/>
+            </StackPanel>
+            <StackPanel x:Name="ViewRibbon" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+              <TextBlock x:Name="RibbonSortLabel" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+              <ComboBox x:Name="RibbonSortBox" Width="128" SelectionChanged="RibbonSortBox_Changed" Margin="0,0,8,0">
+                <ComboBoxItem Tag="date"/><ComboBoxItem Tag="sender"/><ComboBoxItem Tag="subject"/>
+              </ComboBox>
+              <Button x:Name="RibbonReverseSort" Click="RibbonReverseSort_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8CB;" BorderBrush="{DynamicResource IconNeutral}" Margin="0,0,12,0"/>
+              <CheckBox x:Name="RibbonReaderPane" VerticalAlignment="Center" Checked="RibbonReaderPane_Changed" Unchecked="RibbonReaderPane_Changed" Margin="0,0,14,0"/>
+              <CheckBox x:Name="RibbonCompact" VerticalAlignment="Center" Checked="RibbonCompact_Changed" Unchecked="RibbonCompact_Changed"/>
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="2" x:Name="ContentGrid">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="52"/>
+        <ColumnDefinition Width="268" MinWidth="210" MaxWidth="390"/>
+        <ColumnDefinition Width="4"/>
+        <ColumnDefinition x:Name="MessageColumn" Width="510" MinWidth="330" MaxWidth="760"/>
+        <ColumnDefinition x:Name="MessageSplitterColumn" Width="4"/>
+        <ColumnDefinition x:Name="ReaderColumn" Width="*" MinWidth="300"/>
+      </Grid.ColumnDefinitions>
+      <GridSplitter Grid.Column="2" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Background="{DynamicResource Stroke}" ShowsPreview="True" Cursor="SizeWE"/>
+      <GridSplitter x:Name="MessageSplitter" Grid.Column="4" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Background="{DynamicResource Stroke}" ShowsPreview="True" Cursor="SizeWE"/>
+
+      <!-- Outlook-style module rail -->
+      <Border Grid.Column="0" Background="{DynamicResource Rail}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0">
+        <DockPanel Margin="0,9,0,8">
+          <Button x:Name="RailSettingsButton" DockPanel.Dock="Bottom" Click="SettingsTab_Click" Style="{StaticResource NavButton}" Margin="5,0" Padding="0,11" ToolTip="Paramètres">
+            <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20" HorizontalAlignment="Center"/>
+          </Button>
+          <StackPanel>
+            <Button x:Name="RailMailButton" Click="InboxButton_Click" Style="{StaticResource NavActiveButton}" Margin="5,0,5,4" Padding="0,11" ToolTip="Courrier">
+              <TextBlock Text="&#xE715;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20" HorizontalAlignment="Center"/>
+            </Button>
+            <Button x:Name="RailCalendarButton" Click="CalendarButton_Click" Style="{StaticResource NavButton}" Margin="5,0,5,4" Padding="0,11" ToolTip="Agenda">
+              <TextBlock Text="&#xE787;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20" HorizontalAlignment="Center"/>
+            </Button>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- Left navigation -->
+      <Border Grid.Column="1" Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0">
+        <DockPanel Margin="11,13,11,12">
+          <StackPanel DockPanel.Dock="Top">
+            <TextBlock x:Name="AccountLabel" Visibility="Collapsed" Foreground="{DynamicResource Muted}" FontSize="10" FontWeight="Bold" Margin="10,0,0,8"/>
+            <ListBox x:Name="AccountList" Visibility="Collapsed" MaxHeight="138" SelectionChanged="AccountList_SelectionChanged" Margin="0,0,0,6">
+              <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                  <Setter Property="Padding" Value="9,8"/>
+                  <Setter Property="Margin" Value="0,1"/>
+                  <Setter Property="Cursor" Value="Hand"/>
+                  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Chrome" Background="Transparent" CornerRadius="9" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Hover}"/></Trigger>
+                      <Trigger Property="IsSelected" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Selected}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate></Setter.Value></Setter>
+                </Style>
+              </ListBox.ItemContainerStyle>
+              <ListBox.ItemTemplate><DataTemplate>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                  <Border Width="25" Height="25" Background="{DynamicResource SurfaceAlt}" CornerRadius="12" BorderBrush="{DynamicResource Stroke}" BorderThickness="1"><TextBlock Text="@" Foreground="{DynamicResource AccentDark}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/></Border>
+                  <TextBlock Grid.Column="1" Text="{Binding Email}" Foreground="{DynamicResource Ink}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </Grid>
+              </DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+            <Button x:Name="AddAccountButton" Visibility="Collapsed" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left" Padding="10,6" Margin="0,0,0,16" Click="AddAccountButton_Click"/>
+            <Button x:Name="NewButton" Visibility="Collapsed" Style="{StaticResource AccentButton}" HorizontalContentAlignment="Center" Margin="0,0,0,22" Click="NewButton_Click">
+              <StackPanel Orientation="Horizontal"><TextBlock Text="+" FontSize="20" FontWeight="Normal" Margin="0,-4,9,-3"/><TextBlock x:Name="NewButtonLabel" VerticalAlignment="Center"/></StackPanel>
+            </Button>
+            <TextBlock x:Name="NavigationLabel" Foreground="{DynamicResource Ink}" FontSize="13" FontWeight="SemiBold" Margin="10,5,0,12"/>
+            <Button x:Name="InboxButton" Style="{StaticResource NavActiveButton}" Margin="0,0,0,5" Click="InboxButton_Click">
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <Viewbox Width="17" Height="17" Margin="0,0,12,0"><Path Data="M2,4 L18,4 L18,16 L2,16 Z M2,5 L10,11 L18,5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" Fill="Transparent"/></Viewbox>
+                <TextBlock x:Name="InboxButtonLabel" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button x:Name="CalendarButton" Visibility="Collapsed" Style="{StaticResource NavButton}" Margin="0,0,0,25" Click="CalendarButton_Click">
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <Viewbox Width="17" Height="17" Margin="0,0,12,0"><Path Data="M3,4 L17,4 L17,18 L3,18 Z M3,8 L17,8 M7,2 L7,6 M13,2 L13,6" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" Fill="Transparent"/></Viewbox>
+                <TextBlock x:Name="CalendarButtonLabel" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Grid Margin="0,12,0,7">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="30"/></Grid.ColumnDefinitions>
+              <Button x:Name="AccountFolderButton" Style="{StaticResource NavButton}" Click="AccountFolderButton_Click" Padding="8,5" HorizontalContentAlignment="Left">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="AccountChevron" Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{DynamicResource Muted}" FontSize="12" Width="17" VerticalAlignment="Center"/>
+                  <TextBlock x:Name="EmailLabel" Foreground="{DynamicResource Ink}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button x:Name="FolderOptionsButton" Grid.Column="1" Style="{StaticResource NavButton}" Click="FolderOptionsButton_Click" Padding="0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE712;" FontSize="16" IsEnabled="False"/>
+            </Grid>
+          </StackPanel>
+          <ListBox x:Name="FolderList" SelectionChanged="FolderList_SelectionChanged">
+            <ListBox.ItemContainerStyle>
+              <Style TargetType="ListBoxItem">
+                <Setter Property="Padding" Value="9,5"/>
+                <Setter Property="Margin" Value="0,1"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                  <Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Chrome" Background="Transparent" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Hover}"/></Trigger>
+                      <Trigger Property="IsSelected" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Selected}"/><Setter Property="Foreground" Value="{DynamicResource Ink}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate></Setter.Value>
+                </Setter>
+              </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate><DataTemplate>
+              <StackPanel Orientation="Horizontal" Margin="{Binding Indent}">
+                <Button Width="20" Height="23" Padding="0" Margin="0,0,3,0" Background="Transparent" BorderThickness="0" Visibility="{Binding ExpandVisibility}" Tag="{Binding}" Click="FolderExpand_Click" ToolTip="{Binding ExpandHint}">
+                  <TextBlock Text="{Binding ExpandGlyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Center"/>
+                </Button>
+                <TextBlock Text="&#xE8B7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Foreground="{DynamicResource IconFolder}" Margin="0,0,10,0"/>
+                <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Ink}"/>
+              </StackPanel>
+            </DataTemplate></ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <!-- Message list -->
+      <Border x:Name="MessagesPanel" Grid.Column="3" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="72"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <Border Grid.Row="0" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1" Padding="18,8,15,5">
+            <Grid>
+              <Grid.RowDefinitions><RowDefinition Height="28"/><RowDefinition Height="27"/></Grid.RowDefinitions>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock x:Name="FolderTitle" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+              <TextBlock x:Name="CountLabel" Grid.Column="1" Foreground="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Center"/>
+              <StackPanel Grid.Row="1" Orientation="Horizontal">
+                <Button x:Name="AllFilterButton" Click="AllFilterButton_Click" Style="{StaticResource RibbonTabButton}" Padding="8,2" Margin="0,0,4,0"/>
+                <Button x:Name="UnreadFilterButton" Click="UnreadFilterButton_Click" Style="{StaticResource RibbonTabButton}" Padding="8,2"/>
+              </StackPanel>
+              <Button x:Name="SortSummaryButton" Grid.Row="1" Grid.Column="1" Click="SortSummaryButton_Click" Style="{StaticResource RibbonTabButton}" Padding="6,2" Foreground="{DynamicResource Muted}"/>
+            </Grid>
+          </Border>
+          <Grid Grid.Row="1">
+            <ListBox x:Name="MessageList" Tag="17,11,16,11" SelectionChanged="MessageList_SelectionChanged">
+              <ListBox.GroupStyle>
+                <GroupStyle>
+                  <GroupStyle.HeaderTemplate>
+                    <DataTemplate>
+                      <Border Background="{DynamicResource MessageGroup}" Padding="16,5" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1">
+                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"/>
+                      </Border>
+                    </DataTemplate>
+                  </GroupStyle.HeaderTemplate>
+                </GroupStyle>
+              </ListBox.GroupStyle>
+              <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                  <Setter Property="Padding" Value="0"/>
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                  <Setter Property="Cursor" Value="Hand"/>
+                  <EventSetter Event="PreviewMouseRightButtonDown" Handler="MessageItem_PreviewMouseRightButtonDown"/>
+                  <Setter Property="Template">
+                    <Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                      <Border x:Name="Chrome" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1"><ContentPresenter/></Border>
+                      <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Hover}"/></Trigger>
+                        <Trigger Property="IsSelected" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Selected}"/><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource SelectedStroke}"/></Trigger>
+                      </ControlTemplate.Triggers>
+                    </ControlTemplate></Setter.Value>
+                  </Setter>
+                </Style>
+              </ListBox.ItemContainerStyle>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentDark}" VerticalAlignment="Top" Margin="0,5,0,0">
+                      <Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding IsRead}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Ellipse.Style>
+                    </Ellipse>
+                    <StackPanel Grid.Column="1">
+                      <DockPanel LastChildFill="True">
+                        <TextBlock Text="{Binding DateLabel}" DockPanel.Dock="Right" FontSize="10" Foreground="{DynamicResource Muted}" Margin="8,2,0,0"/>
+                        <TextBlock Text="&#xE7C1;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" DockPanel.Dock="Right" FontSize="12" Foreground="{DynamicResource IconDanger}" Margin="6,1,0,0">
+                          <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsFlagged}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="{Binding SenderName}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis"/>
+                      </DockPanel>
+                      <TextBlock Text="{Binding Subject}" Foreground="{DynamicResource Ink}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+                    </StackPanel>
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="MessageEmptyLabel" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <!-- Reading pane -->
+      <Grid x:Name="ReaderPanel" Grid.Column="5" Background="{DynamicResource Canvas}">
+        <StackPanel x:Name="ReaderEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="310">
+          <Border Width="68" Height="68" Background="{DynamicResource AccentSoft}" CornerRadius="5" HorizontalAlignment="Center" Margin="0,0,0,19">
+            <Viewbox Width="34" Height="34" HorizontalAlignment="Center" VerticalAlignment="Center"><Path Data="M2,4 L18,4 L18,16 L2,16 Z M2,5 L10,11 L18,5" Stroke="{DynamicResource Accent}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/></Viewbox>
+          </Border>
+          <TextBlock x:Name="EmptyTitle" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" HorizontalAlignment="Center"/>
+          <TextBlock x:Name="EmptyDescription" Foreground="{DynamicResource Muted}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,7,0,0" LineHeight="20"/>
+        </StackPanel>
+        <Grid x:Name="ReaderContent" Visibility="Collapsed">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1" Padding="20,16,20,13">
+            <StackPanel>
+              <TextBlock x:Name="SubjectLabel" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" TextWrapping="Wrap" MaxHeight="62"/>
+              <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <Button x:Name="ReplyButton" Click="ReplyButton_Click" IsEnabled="False" Background="Transparent" Padding="8,5">
+                  <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8CA;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Foreground="{DynamicResource IconReply}" Margin="0,0,7,0"/><TextBlock x:Name="ReplyButtonLabel"/></StackPanel>
+                </Button>
+                <Button x:Name="ForwardButton" Margin="6,0,0,0" Click="ForwardButton_Click" IsEnabled="False" Background="Transparent" Padding="8,5">
+                  <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE89C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Foreground="{DynamicResource IconForward}" Margin="0,0,7,0"/><TextBlock x:Name="ForwardButtonLabel"/></StackPanel>
+                </Button>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1" Padding="20,13">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Border Width="38" Height="38" Background="{DynamicResource ReaderAvatar}" CornerRadius="19"><TextBlock x:Name="ReaderAvatar" Foreground="White" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                <TextBlock x:Name="FromLabel" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="SenderAddressLabel" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="ToLabel" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+          <Border Grid.Row="2" x:Name="InvitePanel" Background="{DynamicResource AccentSoft}" BorderBrush="{DynamicResource InviteStroke}" BorderThickness="1" CornerRadius="4" Padding="14" Margin="19,15,19,0" Visibility="Collapsed">
+            <StackPanel>
+              <TextBlock x:Name="InviteHeading" FontWeight="SemiBold" Foreground="{DynamicResource AccentDark}"/>
+              <TextBlock x:Name="InviteSummary" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,8,0,0"/>
+              <TextBlock x:Name="InviteDate" Foreground="{DynamicResource Muted}" Margin="0,5,0,14"/>
+              <StackPanel Orientation="Horizontal">
+                <Button x:Name="AcceptButton" Style="{StaticResource AccentButton}" Click="AcceptButton_Click"/>
+                <Button x:Name="TentativeButton" Margin="8,0,0,0" Click="TentativeButton_Click"/>
+                <Button x:Name="DeclineButton" Margin="8,0,0,0" Click="DeclineButton_Click"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <Grid Grid.Row="3" Margin="20,17,20,17">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <StackPanel Grid.Row="0">
+              <Border x:Name="BlockedImagesPanel" Background="{DynamicResource PrivacyBg}" BorderBrush="{DynamicResource PrivacyStroke}" BorderThickness="1" CornerRadius="3" Padding="11,8" Margin="0,0,0,9" Visibility="Collapsed">
+                <StackPanel>
+                  <TextBlock x:Name="BlockedImagesLabel" Foreground="{DynamicResource AccentDark}" FontSize="12" TextWrapping="Wrap"/>
+                  <Button x:Name="LoadImagesButton" HorizontalAlignment="Left" Margin="0,8,0,0" Padding="11,5" Click="LoadImagesButton_Click"/>
+                  <TextBlock x:Name="ImagePrivacyHint" Foreground="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,7,0,0"/>
+                </StackPanel>
+              </Border>
+              <Border x:Name="TrackingNoticePanel" Background="{DynamicResource TrackingBg}" BorderBrush="{DynamicResource TrackingStroke}" BorderThickness="1" CornerRadius="3" Padding="11,8" Margin="0,0,0,10" Visibility="Collapsed">
+                <TextBlock x:Name="TrackingNoticeLabel" Foreground="{DynamicResource TrackingText}" FontSize="12" TextWrapping="Wrap"/>
+              </Border>
+            </StackPanel>
+            <Grid Grid.Row="1">
+              <ScrollViewer x:Name="PlainBodyScroller" VerticalScrollBarVisibility="Auto">
+                <TextBlock x:Name="BodyLabel" TextWrapping="Wrap" FontSize="14" LineHeight="23" Foreground="{DynamicResource Ink}"/>
+              </ScrollViewer>
+              <RichTextBox x:Name="HtmlBodyBox" Visibility="Collapsed" IsReadOnly="True" IsDocumentEnabled="True" Foreground="{DynamicResource Ink}" BorderThickness="0" Background="Transparent" VerticalScrollBarVisibility="Auto" Padding="0" MouseMove="HtmlBodyBox_MouseMove" MouseLeave="HtmlBodyBox_MouseLeave"/>
+              <wv2:WebView2 x:Name="HtmlWebView" Visibility="Collapsed"/>
+            </Grid>
+            <TextBlock x:Name="AttachmentsLabel" Grid.Row="2" Foreground="{DynamicResource Muted}" Margin="0,13,0,0" TextWrapping="Wrap"/>
+          </Grid>
+        </Grid>
+      </Grid>
+
+      <!-- Calendar overview -->
+      <Grid Grid.Column="3" Grid.ColumnSpan="3" x:Name="CalendarPanel" Visibility="Collapsed" Background="{DynamicResource Canvas}">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <StackPanel Margin="34,28,34,22">
+          <TextBlock x:Name="CalendarTitle" FontSize="25" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"/>
+          <TextBlock x:Name="CalendarHint" Foreground="{DynamicResource Muted}" Margin="0,7,0,0"/>
+        </StackPanel>
+        <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="4" Margin="34,0,34,30">
+          <ListBox x:Name="EventList" Margin="8">
+            <ListBox.ItemTemplate><DataTemplate>
+              <Grid Margin="16,15"><Grid.ColumnDefinitions><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Background="{DynamicResource Accent}" CornerRadius="3"/>
+                <StackPanel Grid.Column="1" Margin="17,0,0,0">
+                  <TextBlock Text="{Binding DateLabel}" Foreground="{DynamicResource AccentDark}" FontWeight="SemiBold" FontSize="12"/>
+                  <TextBlock Text="{Binding Summary}" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,6,0,0"/>
+                  <TextBlock Text="{Binding Location}" Foreground="{DynamicResource Muted}" Margin="0,4,0,0"/>
+                </StackPanel>
+              </Grid>
+            </DataTemplate></ListBox.ItemTemplate>
+          </ListBox>
+        </Border>
+      </Grid>
+    </Grid>
+
+    <Border Grid.Row="3" Background="{DynamicResource StatusBar}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,0,0">
+      <Grid Margin="14,3">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock x:Name="StatusLabel" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <ProgressBar x:Name="SyncProgress" Width="48" Height="4" IsIndeterminate="True" Visibility="Collapsed" Margin="0,0,7,0"/>
+          <TextBlock x:Name="SyncStatusText" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Center" Margin="0,0,16,0"/>
+          <Ellipse x:Name="ConnectionDot" Width="7" Height="7" Fill="{DynamicResource Muted}" Margin="0,0,6,0"/>
+          <TextBlock x:Name="ConnectionStatusText" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Center"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Popup x:Name="LinkPreviewPopup" Placement="MousePoint" HorizontalOffset="14" VerticalOffset="18"
+           AllowsTransparency="True" StaysOpen="True" IsHitTestVisible="False">
+      <Border Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Stroke}"
+              BorderThickness="1" CornerRadius="5" Padding="11,8" MaxWidth="560">
+        <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.3"/></Border.Effect>
+        <StackPanel>
+          <TextBlock x:Name="LinkPreviewCaption" Foreground="{DynamicResource Muted}" FontSize="10" Margin="0,0,0,3"/>
+          <TextBlock x:Name="LinkPreviewText" Foreground="{DynamicResource Ink}" FontSize="11"
+                     TextWrapping="Wrap"/>
+        </StackPanel>
+      </Border>
+    </Popup>
+
+    <Grid x:Name="FileOverlay" Grid.RowSpan="4" Visibility="Collapsed" Background="{DynamicResource FileShade}" Panel.ZIndex="10">
+      <Border Width="510" HorizontalAlignment="Left" Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="29,23">
+            <Button x:Name="FileBackButton" Style="{StaticResource FileActionButton}" Tag="&#xE72B;" Click="FileBack_Click" HorizontalAlignment="Left" Margin="0,0,0,22"/>
+            <TextBlock x:Name="FileHeading" FontSize="25" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"/>
+            <TextBlock x:Name="FileSubtitle" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,5,0,19"/>
+            <TextBlock x:Name="FileAccountHeading" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,0,0,8"/>
+            <ListBox x:Name="FileAccounts" MaxHeight="160" Margin="0,0,0,12" DisplayMemberPath="Email">
+              <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Foreground" Value="{DynamicResource Ink}"/><Setter Property="Padding" Value="10,8"/><Setter Property="Margin" Value="0,1"/><Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/></Style></ListBox.ItemContainerStyle>
+            </ListBox>
+            <TextBlock x:Name="FileNoAccounts" Foreground="{DynamicResource Muted}" Margin="0,0,0,12"/>
+            <Button x:Name="FileSwitchAccount" Style="{StaticResource FileActionButton}" Tag="&#xE8AB;" Click="FileSwitchAccount_Click" HorizontalAlignment="Left" Margin="0,0,0,3"/>
+            <Button x:Name="FileAddAccount" Style="{StaticResource FileActionButton}" Tag="&#xE710;" Click="AddAccountButton_Click" HorizontalAlignment="Left" Margin="0,0,0,3"/>
+            <Button x:Name="FileImportThunderbird" Style="{StaticResource FileActionButton}" Tag="&#xE8B7;" Click="FileImportThunderbird_Click" HorizontalAlignment="Left" Margin="0,0,0,3"/>
+            <Button x:Name="FileEditAccount" Style="{StaticResource FileActionButton}" Tag="&#xE713;" Click="AccountButton_Click" HorizontalAlignment="Left" Margin="0,0,0,22"/>
+            <TextBlock x:Name="FileClientHeading" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,0,0,10"/>
+            <Button x:Name="FileSettings" Style="{StaticResource FileActionButton}" Tag="&#xE713;" Click="SettingsTab_Click" HorizontalAlignment="Left" Margin="0,0,0,3"/>
+            <Button x:Name="FileClose" Style="{StaticResource FileActionButton}" Tag="&#xE711;" Click="FileClose_Click" HorizontalAlignment="Left"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+      <Button HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" BorderThickness="0" Click="FileBack_Click" Margin="510,0,0,0"/>
+    </Grid>
+  </Grid>
+</Window>
