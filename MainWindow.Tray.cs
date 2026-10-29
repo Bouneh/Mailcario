@@ -53,7 +53,7 @@ public partial class MainWindow
             if (e.Button == Forms.MouseButtons.Left)
                 Dispatcher.BeginInvoke(new Action(OpenFromMailNotice));
         };
-        _trayIcon.BalloonTipClicked += (_, _) => Dispatcher.BeginInvoke(new Action(OpenFromMailNotice));
+        _trayIcon.BalloonTipClicked += (_, _) => Dispatcher.BeginInvoke(new Action(OpenFromNewMailNotice));
         UpdateTrayLanguage();
     }
 

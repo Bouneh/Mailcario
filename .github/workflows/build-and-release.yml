@@ -28,6 +28,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Thunderbird import check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --security-check
           if ($LASTEXITCODE -ne 0) { throw 'HTML security check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --inbox-sync-check
+          if ($LASTEXITCODE -ne 0) { throw 'Incoming mail list update check failed.' }
 
   release:
     name: Publish Windows installer

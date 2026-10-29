@@ -18,6 +18,7 @@ public partial class MainWindow
     private bool _offlineMode;
     private readonly HashSet<string> _connectedAccounts = new(StringComparer.OrdinalIgnoreCase);
     private int _activeSyncOperations;
+    private string? _lastNotifiedAccount;
     private DateTimeOffset? _lastSuccessfulSync;
     private static readonly ImageSource MailBadge = CreateMailBadge();
 
@@ -89,7 +90,6 @@ public partial class MainWindow
     {
         if (_monitorRunning || _offlineMode || _monitorCancellation.IsCancellationRequested) return;
         _monitorRunning = true;
-        bool refreshActiveInbox = false;
         var accounts = AccountStore.LoadAccounts();
         BeginSync(Localizer.T("allAccounts"));
         try
@@ -108,16 +108,15 @@ public partial class MainWindow
                     SetAccountConnected(account.Email, true);
                     if (ObserveInbox(account.Email, snapshot.UidValidity, snapshot.Latest) && snapshot.Latest is not null)
                     {
+                        bool activeInbox = IsActiveInbox(account.Email);
+                        if (activeInbox) InsertIncomingInboxMessage(snapshot.Latest);
                         await NotifyNewMailAsync(session, account.Email, snapshot.Latest, _monitorCancellation.Token);
-                        if (account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase))
-                            refreshActiveInbox = true;
+                        if (activeInbox && IsActiveInbox(account.Email)) await RefreshAsync();
                     }
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception) { SetAccountConnected(account.Email, false); }
             }
-            if (!_offlineMode && refreshActiveInbox && _folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase) && !_calendarMode)
-                await RefreshAsync();
         }
         catch (OperationCanceledException) { }
         finally { _monitorRunning = false; EndSync(); }
@@ -178,6 +177,7 @@ public partial class MainWindow
 
     private void NotifyNewMail(string email, MailItem item, string preview)
     {
+        _lastNotifiedAccount = email;
         TaskbarItemInfo.Overlay = MailBadge;
         SetMailAttention(true);
         string detail = _settings.ShowMessagePreview
@@ -192,6 +192,21 @@ public partial class MainWindow
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
         ClearMailBadge();
+    }
+
+    private async void OpenFromNewMailNotice()
+    {
+        OpenFromMailNotice();
+        if (_lastNotifiedAccount is null) return;
+        MailAccount? account = _accounts.FirstOrDefault(value =>
+            value.Email.Equals(_lastNotifiedAccount, StringComparison.OrdinalIgnoreCase));
+        if (account is null) return;
+        if (!account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            AccountList.SelectedItem = account;
+            return;
+        }
+        await NavigateToInboxAsync();
     }
 
     private void ClearMailBadge()

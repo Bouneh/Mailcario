@@ -232,10 +232,10 @@ public partial class MainWindow : Window
             if (cts.IsCancellationRequested || _account != account || _folder != folder) return;
             _messages = messages;
             SetAccountConnected(account.Email, true);
-            MailItem? newMail = ObserveLoadedInbox();
-            if (newMail is not null) await NotifyNewMailAsync(session, account.Email, newMail, cts.Token);
             _searchResults = null;
             FilterMessages();
+            MailItem? newMail = ObserveLoadedInbox();
+            if (newMail is not null) await NotifyNewMailAsync(session, account.Email, newMail, cts.Token);
             FolderTitle.Text = CurrentFolderLabel();
             StatusLabel.Text = ruleError is not null ? Localizer.T("rules") + ": " + ruleError :
                 _messages.Count == 0 ? Localizer.T("noMessages") : $"{_messages.Count} · {Localizer.T("ready")}";
@@ -299,21 +299,57 @@ public partial class MainWindow : Window
 
     private void FilterMessages()
     {
-        _visibleMessages.Clear();
         IEnumerable<MailItem> source = _searchResults ?? _messages;
         if (_unreadOnly) source = source.Where(x => !x.IsRead);
-        source = _settings.SortBy switch
+        var currentByUid = _visibleMessages.GroupBy(item => item.Uid)
+            .ToDictionary(group => group.Key, group => group.First());
+        var desired = SortMessages(source).Select(item =>
+        {
+            if (!currentByUid.TryGetValue(item.Uid, out MailItem? current)) return item;
+            current.IsRead = item.IsRead;
+            current.IsFlagged = item.IsFlagged;
+            return current;
+        }).ToList();
+        for (int index = 0; index < desired.Count; index++)
+        {
+            if (index < _visibleMessages.Count && ReferenceEquals(_visibleMessages[index], desired[index])) continue;
+            int existingIndex = _visibleMessages.IndexOf(desired[index]);
+            if (existingIndex >= 0) _visibleMessages.Move(existingIndex, index);
+            else _visibleMessages.Insert(index, desired[index]);
+        }
+        while (_visibleMessages.Count > desired.Count) _visibleMessages.RemoveAt(_visibleMessages.Count - 1);
+        var view = CollectionViewSource.GetDefaultView(_visibleMessages);
+        bool groupByDate = _settings.SortBy == "date";
+        if (view.GroupDescriptions is { } groups)
+        {
+            if (!groupByDate) groups.Clear();
+            else if (groups.Count == 0) groups.Add(new PropertyGroupDescription(nameof(MailItem.DayGroup)));
+        }
+        CountLabel.Text = MessageCount(_visibleMessages.Count);
+        MessageEmptyLabel.Visibility = _visibleMessages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private IEnumerable<MailItem> SortMessages(IEnumerable<MailItem> source) => _settings.SortBy switch
         {
             "sender" => _settings.SortDescending ? source.OrderByDescending(x => x.SenderName, StringComparer.CurrentCultureIgnoreCase) : source.OrderBy(x => x.SenderName, StringComparer.CurrentCultureIgnoreCase),
             "subject" => _settings.SortDescending ? source.OrderByDescending(x => x.Subject, StringComparer.CurrentCultureIgnoreCase) : source.OrderBy(x => x.Subject, StringComparer.CurrentCultureIgnoreCase),
             _ => _settings.SortDescending ? source.OrderByDescending(x => x.Date) : source.OrderBy(x => x.Date)
         };
-        foreach (var item in source) _visibleMessages.Add(item);
-        var view = CollectionViewSource.GetDefaultView(_visibleMessages);
-        view.GroupDescriptions?.Clear();
-        if (_settings.SortBy == "date") view.GroupDescriptions?.Add(new PropertyGroupDescription(nameof(MailItem.DayGroup)));
+
+    private bool IsActiveInbox(string email) => !_calendarMode &&
+        _folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase) &&
+        email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase);
+
+    private void InsertIncomingInboxMessage(MailItem incoming)
+    {
+        if (_messages.Any(message => message.Uid == incoming.Uid)) return;
+        _messages = _messages.Prepend(incoming).Take(30).ToList();
+        if (_searchResults is not null || (_unreadOnly && incoming.IsRead)) return;
+        int position = SortMessages(_visibleMessages.Append(incoming)).ToList()
+            .FindIndex(message => ReferenceEquals(message, incoming));
+        _visibleMessages.Insert(Math.Max(0, position), incoming);
         CountLabel.Text = MessageCount(_visibleMessages.Count);
-        MessageEmptyLabel.Visibility = _visibleMessages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        MessageEmptyLabel.Visibility = Visibility.Collapsed;
     }
 
     private async void MessageList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -684,7 +720,28 @@ public partial class MainWindow : Window
         }
         await RefreshAsync(true);
     }
-    private void InboxButton_Click(object sender, RoutedEventArgs e) => ShowInbox();
+    private async void InboxButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(sender, RailMailButton)) { ShowInbox(); return; }
+        await NavigateToInboxAsync();
+    }
+
+    private async Task NavigateToInboxAsync()
+    {
+        if (!_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+        {
+            _folder = "INBOX";
+            _folderDelimiter = _allFolders.FirstOrDefault(folder =>
+                folder.ServerName.Equals("INBOX", StringComparison.OrdinalIgnoreCase))?.Delimiter ?? '/';
+            _searchCts?.Cancel();
+            _searchResults = null;
+            SearchBox.Clear();
+            _calendarLoaded = false;
+            ApplyFolderList();
+        }
+        ShowInbox();
+        await RefreshAsync();
+    }
     private async void CalendarButton_Click(object sender, RoutedEventArgs e) => await ShowCalendarAsync();
     private async void FolderList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

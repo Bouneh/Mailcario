@@ -17,6 +17,50 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--inbox-sync-check")
+        {
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var window = new MainWindow();
+            var previous = new MailItem { Uid = 10, From = "Previous <previous@example.invalid>",
+                Subject = "Previous message", Date = DateTimeOffset.UtcNow.AddHours(-1) };
+            typeof(MainWindow).GetField("_messages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, new[] { previous });
+            typeof(MainWindow).GetMethod("FilterMessages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            var syncList = (ListBox)window.FindName("MessageList");
+            syncList.SelectedItem = previous;
+            var incoming = new MailItem { Uid = 11, From = "New <new@example.invalid>",
+                Subject = "New message", Date = DateTimeOffset.UtcNow };
+            var insert = typeof(MainWindow).GetMethod("InsertIncomingInboxMessage",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            insert.Invoke(window, [incoming]);
+            insert.Invoke(window, [incoming]);
+            bool passed = syncList.Items.Count == 2 && ReferenceEquals(syncList.Items[0], incoming) &&
+                ReferenceEquals(syncList.SelectedItem, previous) &&
+                ((TextBlock)window.FindName("CountLabel")).Text.Contains('2');
+            typeof(MainWindow).GetField("_messages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, new[]
+                {
+                    new MailItem { Uid = 11, From = incoming.From, Subject = incoming.Subject, Date = incoming.Date },
+                    new MailItem { Uid = 10, From = previous.From, Subject = previous.Subject, Date = previous.Date }
+                });
+            typeof(MainWindow).GetMethod("FilterMessages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            passed &= ReferenceEquals(syncList.SelectedItem, previous) && syncList.Items.Count == 2;
+            typeof(MainWindow).GetField("_folder", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, "Archive");
+            ((Button)window.FindName("InboxButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            passed &= (string)typeof(MainWindow).GetField("_folder", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(window)! == "INBOX";
+            window.Close();
+            ThemeManager.Shutdown();
+            Console.WriteLine(passed ? "Incoming mail appears immediately without duplicate or lost selection" :
+                "Incoming mail list update failed");
+            if (!passed) Environment.ExitCode = 1;
+            return;
+        }
         if (args.Length > 0 && args[0] == "--thunderbird-import-check")
         {
             string prefsPath = Path.Combine(Path.GetTempPath(), "Mailcario-Thunderbird-" + Guid.NewGuid().ToString("N") + ".js");
