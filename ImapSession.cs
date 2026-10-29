@@ -228,7 +228,7 @@ public sealed class ImapSession : IAsyncDisposable
 
     private async Task<MailItem?> FetchSummaryAsync(string prefix, CancellationToken token)
     {
-        var response = await CommandAsync($"{prefix} (UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])", token, 128_000);
+        var response = await CommandAsync($"{prefix} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])", token, 128_000);
         byte[]? literal = response.Parts.FirstOrDefault(p => p.Literal is not null)?.Literal;
         if (literal is null) return null;
         var headers = MimeReader.ReadHeaders(literal);
@@ -236,8 +236,9 @@ public sealed class ImapSession : IAsyncDisposable
         var uidMatch = Regex.Match(meta, @"\bUID (\d+)", RegexOptions.IgnoreCase);
         if (!uidMatch.Success || !uint.TryParse(uidMatch.Groups[1].Value, out uint uid)) return null;
         var seqMatch = Regex.Match(meta, @"\* (\d+) FETCH", RegexOptions.IgnoreCase);
-        DateTimeOffset? date = null;
-        if (DateTimeOffset.TryParse(headers.GetValueOrDefault("date"), out var parsedDate)) date = parsedDate;
+        var internalDateMatch = Regex.Match(meta, "\\bINTERNALDATE\\s+\"([^\"]+)\"", RegexOptions.IgnoreCase);
+        DateTimeOffset? date = MailDateParser.Parse(headers.GetValueOrDefault("date"),
+            internalDateMatch.Success ? internalDateMatch.Groups[1].Value : null);
         string from = MimeReader.DecodeHeader(headers.GetValueOrDefault("from") ?? "");
         return new MailItem
         {

@@ -54,10 +54,16 @@ internal static class Program
             ((Button)window.FindName("InboxButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             passed &= (string)typeof(MainWindow).GetField("_folder", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .GetValue(window)! == "INBOX";
+            passed &= MailDateParser.Parse("Thu, 29 Oct 2026 21:52:28 +0000 (UTC)", null)
+                == new DateTimeOffset(2026, 10, 29, 21, 52, 28, TimeSpan.Zero);
+            passed &= MailDateParser.Parse("Thu, 29 Oct 2026 08:31:52 +0000 (GMT)", null)
+                == new DateTimeOffset(2026, 10, 29, 8, 31, 52, TimeSpan.Zero);
+            passed &= MailDateParser.Parse("invalid", "29-Oct-2026 21:52:28 +0000")
+                == new DateTimeOffset(2026, 10, 29, 21, 52, 28, TimeSpan.Zero);
             window.Close();
             ThemeManager.Shutdown();
-            Console.WriteLine(passed ? "Incoming mail appears immediately without duplicate or lost selection" :
-                "Incoming mail list update failed");
+            Console.WriteLine(passed ? "Incoming mail and date parsing checks passed" :
+                "Incoming mail or date parsing check failed");
             if (!passed) Environment.ExitCode = 1;
             return;
         }

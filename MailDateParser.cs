@@ -1,0 +1,33 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
+namespace Mailcario;
+
+public static class MailDateParser
+{
+    public static DateTimeOffset? Parse(string? headerDate, string? internalDate)
+    {
+        if (!string.IsNullOrWhiteSpace(headerDate))
+        {
+            // RFC 5322 comments such as "(UTC)" are common in Date headers but
+            // DateTimeOffset.TryParse does not accept them after the numeric offset.
+            string value = headerDate;
+            while (Regex.IsMatch(value, @"\([^()]*\)"))
+                value = Regex.Replace(value, @"\([^()]*\)", " ");
+            value = Regex.Replace(value, @"^\s*(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*", "",
+                RegexOptions.IgnoreCase);
+            if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AllowWhiteSpaces, out var parsed)) return parsed;
+        }
+
+        // INTERNALDATE is supplied by the IMAP server even when a message has
+        // no valid Date header. Its offset has no colon, unlike .NET's zzz format.
+        if (!string.IsNullOrWhiteSpace(internalDate))
+        {
+            string value = Regex.Replace(internalDate.Trim(), @"([+-]\d{2})(\d{2})$", "$1:$2");
+            if (DateTimeOffset.TryParseExact(value, "d-MMM-yyyy HH:mm:ss zzz",
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)) return parsed;
+        }
+        return null;
+    }
+}
