@@ -32,7 +32,7 @@ internal static class UpdateService
         using CancellationTokenSource checkTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         checkTimeout.CancelAfter(TimeSpan.FromSeconds(12));
         using HttpResponseMessage response = await Client.GetAsync(api, checkTimeout.Token);
-        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden) return null;
+        if (response.StatusCode is HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
         using JsonDocument release = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(checkTimeout.Token));
         JsonElement root = release.RootElement;

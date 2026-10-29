@@ -31,6 +31,7 @@ public partial class MainWindow
         FolderTabButton.Content = Localizer.T("folder");
         ViewTabButton.Content = Localizer.T("view");
         SettingsTabButton.Content = Localizer.T("settings");
+        AboutTabButton.Content = Localizer.T("about");
         RibbonNew.Content = Localizer.T("newMail");
         RibbonNewGroupCaption.Text = Localizer.T("newGroup");
         RibbonReplyGroupCaption.Text = Localizer.T("respondGroup");
@@ -67,6 +68,7 @@ public partial class MainWindow
         FileEditAccount.Content = Localizer.T("editAccount");
         FileClientHeading.Text = Localizer.T("clientSettings");
         FileSettings.Content = Localizer.T("settings");
+        FileAbout.Content = Localizer.T("about");
         FileClose.Content = Localizer.T("closeFile");
         FileQuit.Content = Localizer.T("quitMailcarioTray");
     }
@@ -147,6 +149,11 @@ public partial class MainWindow
     private void FileBack_Click(object sender, RoutedEventArgs e) => FileOverlay.Visibility = Visibility.Collapsed;
     private void FileClose_Click(object sender, RoutedEventArgs e) => FileOverlay.Visibility = Visibility.Collapsed;
     private void FileQuit_Click(object sender, RoutedEventArgs e) => QuitMailcario();
+    private void AboutTab_Click(object sender, RoutedEventArgs e)
+    {
+        FileOverlay.Visibility = Visibility.Collapsed;
+        new AboutWindow { Owner = this }.ShowDialog();
+    }
 
     private void FileSwitchAccount_Click(object sender, RoutedEventArgs e)
     {
@@ -155,10 +162,10 @@ public partial class MainWindow
         AccountList.SelectedItem = account;
     }
 
-    private void SettingsTab_Click(object sender, RoutedEventArgs e)
+    private async void SettingsTab_Click(object sender, RoutedEventArgs e)
     {
         FileOverlay.Visibility = Visibility.Collapsed;
-        var window = new SettingsWindow(_settings) { Owner = this };
+        var window = new SettingsWindow(_settings, _accounts) { Owner = this };
         if (window.ShowDialog() != true) return;
         _settings = window.Settings;
         try { _settings.Save(); }
@@ -168,6 +175,9 @@ public partial class MainWindow
         ApplyRibbonPreferences();
         ApplyViewPreferences();
         FilterMessages();
+        if (_account is not null && _settings.AutoLoadImages.TryGetValue(_account.Email, out bool autoImages)
+            && autoImages && _selectedContent?.HtmlText.Length > 0)
+            await LoadImagesAsync();
     }
 
     private void ApplyViewPreferences()

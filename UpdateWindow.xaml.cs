@@ -39,7 +39,8 @@ public partial class UpdateWindow : Window
             string installer = await UpdateService.DownloadAsync(_update, progress, CancellationToken.None);
             ProgressLabel.Text = Localizer.T("updateInstalling");
             UpdateService.ApplyAndRestart(installer, _update.Sha256);
-            if (Owner is MainWindow mainWindow) mainWindow.QuitMailcario();
+            _downloading = false;
+            if (Application.Current.MainWindow is MainWindow mainWindow) mainWindow.QuitMailcario();
             else Application.Current.Shutdown();
         }
         catch (Exception ex)

@@ -44,7 +44,7 @@ Mailcario est un **client de messagerie local pour Windows**. Aucun serveur pers
 
 ![Bandeaux de protection des images et pixels de suivi](docs/images/privacy-dark.png)
 
-Les images distantes ne sont pas téléchargées automatiquement. Un bandeau permet de charger les images ordinaires si vous le souhaitez ; les pixels de suivi détectés restent bloqués. Les images intégrées aux signatures peuvent aussi être affichées sur demande, sans contacter d’hébergeur externe.
+Les images distantes sont bloquées par défaut. Un bandeau permet de charger les images ordinaires si vous le souhaitez ; les pixels de suivi détectés restent bloqués. Les images intégrées aux signatures peuvent aussi être affichées sur demande, sans contacter d’hébergeur externe. Dans les **Paramètres**, vous pouvez activer le téléchargement automatique des images séparément pour chaque compte. Leur hébergeur peut alors connaître votre adresse IP et l’ouverture du message ; la détection du suivi n’est pas infaillible.
 </details>
 
 ## Commencer
@@ -55,6 +55,8 @@ Les images distantes ne sont pas téléchargées automatiquement. Un bandeau per
 4. Connectez-vous auprès de votre fournisseur. Les mots de passe et les messages locaux de Thunderbird ne sont pas copiés.
 
 Au démarrage, Mailcario cherche une version plus récente publiée sur GitHub. Vous pouvez choisir **Plus tard** ou **Télécharger la mise à jour**. Le téléchargement est vérifié avec son empreinte SHA-256, puis Mailcario s’installe et se rouvre automatiquement. Les nouvelles versions sont construites et publiées par GitHub Actions quand la version du projet augmente sur `main`.
+
+L’onglet **À propos** affiche la version installée et permet d’ouvrir le dépôt, de rechercher ou de télécharger une mise à jour à tout moment. Faites glisser la séparation sous la liste des comptes pour en régler la hauteur.
 
 Un nouveau mail apparaît dans une notification Windows avec un court extrait du message. Fermer la fenêtre laisse Mailcario actif dans la zone de notification ; son icône permet de rouvrir la boîte ou de quitter l’application.
 

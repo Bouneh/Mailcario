@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AccountPaneRow.Height = new GridLength(_settings.AccountPaneHeight);
         WindowTheme.Attach(this);
         InitializeNotifications();
         InitializeRibbon();
@@ -98,6 +99,7 @@ public partial class MainWindow : Window
         ApplyRibbonLanguage();
         AccountLabel.Text = Localizer.T("accounts").ToUpperInvariant();
         AddAccountButton.Content = "+  " + Localizer.T("addAccount");
+        AccountPaneSplitter.ToolTip = Localizer.T("resizeAccounts");
         NavigationLabel.Text = Localizer.T("favorites");
         InboxButtonLabel.Text = Localizer.T("inbox");
         CalendarButtonLabel.Text = Localizer.T("calendar");
@@ -147,7 +149,7 @@ public partial class MainWindow : Window
         _updatingAccounts = true;
         AccountList.ItemsSource = _accounts;
         AccountList.SelectedItem = _accounts.FirstOrDefault(a => a.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase));
-        AccountLabel.Visibility = AccountList.Visibility = _accounts.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        AccountLabel.Visibility = AccountList.Visibility = Visibility.Visible;
         AddAccountButton.Visibility = Visibility.Visible;
         EmailLabel.Text = _account?.Email ?? Localizer.T("account");
         FileAccounts.ItemsSource = _accounts;
@@ -155,6 +157,14 @@ public partial class MainWindow : Window
         UpdateRibbonSelection();
         UpdateConnectionStatus();
         _updatingAccounts = false;
+    }
+
+    private void AccountPaneSplitter_DragCompleted(object sender,
+        System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        _settings.AccountPaneHeight = AccountPaneRow.ActualHeight;
+        try { _settings.Save(); }
+        catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
     }
 
     private bool ShowAccountWindow(MailAccount? existing)
@@ -374,7 +384,9 @@ public partial class MainWindow : Window
                 {
                     var rendered = SafeHtmlRenderer.Render(content.HtmlText);
                     ApplyRenderedMail(rendered);
+                    bool automaticImages = _settings.AutoLoadImages.TryGetValue(account.Email, out bool enabled) && enabled;
                     await ShowTemplateAsync(content.HtmlText, item);
+                    if (automaticImages) await LoadImagesAsync();
                 }
                 catch (RegexMatchTimeoutException) { /* Plain text remains available. */ }
             }
@@ -499,7 +511,9 @@ public partial class MainWindow : Window
         TrackingNoticeLabel.Text = string.Format(Localizer.T("trackingBlocked"), _trackingPixels);
     }
 
-    private async void LoadImagesButton_Click(object sender, RoutedEventArgs e)
+    private async void LoadImagesButton_Click(object sender, RoutedEventArgs e) => await LoadImagesAsync();
+
+    private async Task LoadImagesAsync()
     {
         if (_selected is null || string.IsNullOrWhiteSpace(_selectedContent?.HtmlText)) return;
         var item = _selected;

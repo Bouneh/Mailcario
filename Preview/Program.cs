@@ -620,6 +620,19 @@ internal static class Program
         app.InitializeComponent();
         ThemeManager.Initialize("dark");
         Render(new MainWindow(), 1320, 780, Path.Combine(output, "main.png"));
+        var accountsPreview = new MainWindow();
+        var sampleAccounts = new[]
+        {
+            new MailAccount { Email = "first@example.invalid" },
+            new MailAccount { Email = "second@example.invalid" }
+        };
+        typeof(MainWindow).GetField("_accounts", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(accountsPreview, sampleAccounts);
+        typeof(MainWindow).GetField("_account", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(accountsPreview, sampleAccounts[0]);
+        typeof(MainWindow).GetMethod("RefreshAccountList", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(accountsPreview, null);
+        Render(accountsPreview, 1320, 780, Path.Combine(output, "accounts-pane.png"));
         var populated = new MainWindow();
         typeof(MainWindow).GetField("_allFolders", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(populated, new[]
         {
@@ -695,7 +708,9 @@ internal static class Program
         var filePreview = new MainWindow();
         ((Button)filePreview.FindName("FileTabButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Render(filePreview, 1320, 780, Path.Combine(output, "file.png"));
-        Render(new SettingsWindow(new ClientSettings()), 600, 700, Path.Combine(output, "settings.png"));
+        Render(new SettingsWindow(new ClientSettings(), sampleAccounts), 600, 700, Path.Combine(output, "settings.png"));
+        Render(new SettingsWindow(new ClientSettings(), sampleAccounts), 600, 850, Path.Combine(output, "settings-full.png"));
+        Render(new AboutWindow(), 500, 340, Path.Combine(output, "about.png"));
         var importPreview = new ThunderbirdImportWindow();
         var previewCandidates = new[]
         {
@@ -712,7 +727,7 @@ internal static class Program
         var liveSwitchPreview = new MainWindow();
         ThemeManager.SetMode("light");
         Render(liveSwitchPreview, 1320, 780, Path.Combine(output, "main-light.png"));
-        Render(new SettingsWindow(new ClientSettings { ThemeMode = "light" }), 600, 700, Path.Combine(output, "settings-light.png"));
+        Render(new SettingsWindow(new ClientSettings { ThemeMode = "light" }, sampleAccounts), 600, 700, Path.Combine(output, "settings-light.png"));
         ThemeManager.Shutdown();
     }
 

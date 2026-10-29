@@ -7,7 +7,7 @@ public partial class SettingsWindow : Window
 {
     public ClientSettings Settings { get; private set; }
 
-    public SettingsWindow(ClientSettings settings)
+    public SettingsWindow(ClientSettings settings, IReadOnlyList<MailAccount> accounts)
     {
         InitializeComponent();
         WindowTheme.Attach(this);
@@ -35,6 +35,19 @@ public partial class SettingsWindow : Window
         SyncCheck.Content = Localizer.T("sendReceiveTab");
         FolderCheck.Content = Localizer.T("folderTab");
         ViewCheck.Content = Localizer.T("viewTab");
+        ImagesHeading.Text = Localizer.T("imagesPerAccount");
+        ImagesRisk.Text = Localizer.T("autoLoadImagesRisk");
+        foreach (MailAccount account in accounts)
+        {
+            ImageAccountOptions.Children.Add(new CheckBox
+            {
+                Content = string.Format(Localizer.T("autoLoadImages"), account.Email),
+                Tag = account.Email,
+                IsChecked = Settings.AutoLoadImages.TryGetValue(account.Email, out bool enabled) && enabled,
+                Margin = new Thickness(0, 0, 0, 9),
+                Foreground = (System.Windows.Media.Brush)FindResource("Ink")
+            });
+        }
         CancelButton.Content = Localizer.T("cancel");
         SaveButton.Content = Localizer.T("save");
         NotifyCheck.IsChecked = Settings.NotifyNewMail;
@@ -66,6 +79,8 @@ public partial class SettingsWindow : Window
         Settings.SyncCommands = SyncCheck.IsChecked == true;
         Settings.FolderCommands = FolderCheck.IsChecked == true;
         Settings.ViewCommands = ViewCheck.IsChecked == true;
+        foreach (CheckBox check in ImageAccountOptions.Children.OfType<CheckBox>())
+            if (check.Tag is string email) Settings.AutoLoadImages[email] = check.IsChecked == true;
         DialogResult = true;
     }
 

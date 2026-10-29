@@ -40,6 +40,13 @@
         </Border>
         <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="5" Padding="19" Margin="0,0,0,14">
           <StackPanel>
+            <TextBlock x:Name="ImagesHeading" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,0,0,12"/>
+            <StackPanel x:Name="ImageAccountOptions"/>
+            <TextBlock x:Name="ImagesRisk" Foreground="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
+          </StackPanel>
+        </Border>
+        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="5" Padding="19" Margin="0,0,0,14">
+          <StackPanel>
             <TextBlock x:Name="LayoutHeading" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,0,0,13"/>
             <CheckBox x:Name="RibbonCheck" Margin="0,0,0,10"/>
             <CheckBox x:Name="ReaderCheck" Margin="0,0,0,10"/>

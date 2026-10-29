@@ -22,7 +22,9 @@ public sealed class ClientSettings
     public string SortBy { get; set; } = "date";
     public bool SortDescending { get; set; } = true;
     public string ThemeMode { get; set; } = "system";
+    public double AccountPaneHeight { get; set; } = 166;
     public Dictionary<string, FolderViewState> FolderViews { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, bool> AutoLoadImages { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public static ClientSettings Load()
     {
@@ -33,7 +35,12 @@ public sealed class ClientSettings
             settings.CheckIntervalMinutes = Math.Clamp(settings.CheckIntervalMinutes, 1, 60);
             if (settings.SortBy is not ("date" or "sender" or "subject")) settings.SortBy = "date";
             if (settings.ThemeMode is not ("system" or "light" or "dark")) settings.ThemeMode = "system";
+            settings.AccountPaneHeight = double.IsFinite(settings.AccountPaneHeight)
+                ? Math.Clamp(settings.AccountPaneHeight, 94, 420) : 166;
             settings.FolderViews ??= new(StringComparer.OrdinalIgnoreCase);
+            settings.AutoLoadImages = settings.AutoLoadImages is null
+                ? new(StringComparer.OrdinalIgnoreCase)
+                : new(settings.AutoLoadImages, StringComparer.OrdinalIgnoreCase);
             return settings;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -46,7 +53,12 @@ public sealed class ClientSettings
         File.WriteAllText(PathName, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    public ClientSettings Copy() => (ClientSettings)MemberwiseClone();
+    public ClientSettings Copy()
+    {
+        var copy = (ClientSettings)MemberwiseClone();
+        copy.AutoLoadImages = new(AutoLoadImages, StringComparer.OrdinalIgnoreCase);
+        return copy;
+    }
 }
 
 public sealed class FolderViewState
