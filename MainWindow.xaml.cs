@@ -59,8 +59,11 @@ public partial class MainWindow : Window
     private int _webDocumentId;
     private ClientSettings _settings = ClientSettings.Load();
 
-    public MainWindow()
+    public MainWindow() : this(null) { }
+
+    public MainWindow(LocalMailStore? localMailStore)
     {
+        _localMailStore = localMailStore ?? new LocalMailStore();
         InitializeComponent();
         AccountPaneRow.Height = new GridLength(_settings.AccountPaneHeight);
         WindowTheme.Attach(this);
@@ -101,8 +104,10 @@ public partial class MainWindow : Window
         _password = _account is null ? null : AccountStore.LoadPassword(_account.Email);
         RestoreFolderView();
         RefreshAccountList();
+        RefreshLocalFolders();
         UpdateConnectionStatus();
-        if (_account is null || _password is null) ShowAccountWindow(_account);
+        if ((_account is null || _password is null) && _localMailStore.ListFolders().Count == 0)
+            ShowAccountWindow(_account);
         if (_account is not null && _password is not null) await RefreshAsync(true);
         ConfigureMailTimer();
         await PollAllAccountsAsync();
@@ -124,6 +129,8 @@ public partial class MainWindow : Window
         ClearSearchButton.ToolTip = Localizer.T("clearSearch");
         SearchHint.Text = Localizer.T("search");
         FolderOptionsButton.ToolTip = Localizer.T("chooseFolders");
+        LocalFoldersLabel.Text = Localizer.T("localFolders");
+        AddLocalFolderButton.ToolTip = Localizer.T("newLocalFolder");
         ApplyAccountFolderState();
         UpdateConnectionStatus();
         LinkPreviewCaption.Text = Localizer.T("linkTarget");
@@ -164,7 +171,9 @@ public partial class MainWindow : Window
                 ? string.Format(Localizer.T("unreadInboxCount"), _unreadInboxTotal) : "Mailcario";
     }
 
-    private string CurrentFolderLabel() => new MailFolder { ServerName = _folder, Delimiter = _folderDelimiter,
+    private string CurrentFolderLabel() => _localFolderId is { } localId
+        ? _localMailStore.ListFolders().FirstOrDefault(f => f.Id == localId)?.Name ?? Localizer.T("localFolders")
+        : new MailFolder { ServerName = _folder, Delimiter = _folderDelimiter,
         IsSent = _allFolders.Any(folder => folder.IsSent && folder.ServerName.Equals(_folder,
             StringComparison.OrdinalIgnoreCase)) }.DisplayName;
 
@@ -209,6 +218,7 @@ public partial class MainWindow : Window
         _olderLoadCts?.Cancel();
         _searchCts?.Cancel();
         CancelImageLoad();
+        _localFolderId = null;
         _folder = "INBOX";
         _folderDelimiter = '/';
         _calendarLoaded = false;
@@ -224,6 +234,7 @@ public partial class MainWindow : Window
         _allFolders = [];
         RestoreFolderView();
         ApplyFolderList();
+        RefreshLocalFolders();
         EmailLabel.Text = _account?.Email ?? Localizer.T("account");
         FolderTitle.Text = CurrentFolderLabel();
         ShowInbox();
@@ -231,6 +242,7 @@ public partial class MainWindow : Window
 
     private async Task RefreshAsync(bool includeFolders = false, bool preserveLoaded = false)
     {
+        if (_localFolderId is not null) { RefreshLocalMessages(); return; }
         if (_offlineMode) { StatusLabel.Text = Localizer.T("offlineStatus"); return; }
         if (_account is null || _password is null) return;
         _mailLoadCts?.Cancel();
@@ -263,7 +275,7 @@ public partial class MainWindow : Window
             try { messages = await MailRuleStore.ApplyAsync(session, account.Email, folder, messages, cts.Token); }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) { ruleError = ex.Message; }
-            if (cts.IsCancellationRequested || _account != account || _folder != folder) return;
+            if (cts.IsCancellationRequested || _account != account || _folder != folder || _localFolderId is not null) return;
             bool sameFolder = preserveLoaded && string.Equals(_loadedFolderAccount, account.Email,
                 StringComparison.OrdinalIgnoreCase) && string.Equals(_loadedFolderName, folder,
                 StringComparison.OrdinalIgnoreCase);
@@ -320,7 +332,7 @@ public partial class MainWindow : Window
         string? searchQuery = _loadedSearchQuery;
         bool searchPage = _searchResults is not null && searchQuery == SearchBox.Text.Trim();
         int before = searchPage ? _nextOlderSearchIndex : _nextOlderSequence;
-        if (_olderLoadCts is not null || _mailLoadCts is not null || before < 1 ||
+        if (_localFolderId is not null || _olderLoadCts is not null || _mailLoadCts is not null || before < 1 ||
             (!searchPage && SearchBox.Text.Trim().Length > 0) ||
             _offlineMode || _account is null || _password is null) return;
         var cts = new CancellationTokenSource();
@@ -339,7 +351,7 @@ public partial class MainWindow : Window
             {
                 MailSearchPage page = await session.SearchPageAsync(folder, searchQuery!, before,
                     token: cts.Token, sentFolder: sentFolder);
-                if (cts.IsCancellationRequested || _account != account || _folder != folder ||
+                if (cts.IsCancellationRequested || _localFolderId is not null || _account != account || _folder != folder ||
                     _loadedSearchQuery != searchQuery || SearchBox.Text.Trim() != searchQuery) return;
                 var currentResults = _searchResults!;
                 var knownUids = currentResults.Select(item => item.Uid).ToHashSet();
@@ -354,7 +366,7 @@ public partial class MainWindow : Window
                 try { older = await MailRuleStore.ApplyAsync(session, account.Email, folder, older, cts.Token); }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex) { StatusLabel.Text = Localizer.T("rules") + ": " + ex.Message; }
-                if (cts.IsCancellationRequested || _account != account || _folder != folder) return;
+                if (cts.IsCancellationRequested || _localFolderId is not null || _account != account || _folder != folder) return;
                 var knownUids = _messages.Select(item => item.Uid).ToHashSet();
                 _messages = _messages.Concat(older.Where(item => knownUids.Add(item.Uid))).ToList();
                 _folderTotalCount = page.TotalCount;
@@ -399,7 +411,7 @@ public partial class MainWindow : Window
             CountLabel.Text += $" · {_searchResults.Count}/{_searchTotalCount}";
         else if (_folderTotalCount > _messages.Count && _searchResults is null)
             CountLabel.Text += $" · {_messages.Count}/{_folderTotalCount}";
-        bool canLoad = !_offlineMode && (_searchResults is not null
+        bool canLoad = _localFolderId is null && !_offlineMode && (_searchResults is not null
             ? _nextOlderSearchIndex > 0 && _loadedSearchQuery == SearchBox.Text.Trim()
             : _nextOlderSequence > 0 && SearchBox.Text.Trim().Length == 0);
         LoadOlderButton.Visibility = canLoad ? Visibility.Visible : Visibility.Collapsed;
@@ -410,6 +422,18 @@ public partial class MainWindow : Window
     private async Task RunSearchAsync()
     {
         _searchTimer.Stop();
+        if (_localFolderId is not null)
+        {
+            string localQuery = SearchBox.Text.Trim();
+            _searchResults = localQuery.Length == 0 ? null : _messages.Where(item =>
+                item.Subject.Contains(localQuery, StringComparison.CurrentCultureIgnoreCase) ||
+                item.From.Contains(localQuery, StringComparison.CurrentCultureIgnoreCase) ||
+                item.To.Contains(localQuery, StringComparison.CurrentCultureIgnoreCase) ||
+                item.Cc.Contains(localQuery, StringComparison.CurrentCultureIgnoreCase)).ToList();
+            FilterMessages();
+            StatusLabel.Text = MessageCount(_visibleMessages.Count);
+            return;
+        }
         if (_offlineMode) { StatusLabel.Text = Localizer.T("offlineStatus"); return; }
         string query = SearchBox.Text.Trim();
         if (query.Length == 0)
@@ -459,11 +483,12 @@ public partial class MainWindow : Window
     {
         IEnumerable<MailItem> source = _searchResults ?? _messages;
         if (_unreadOnly) source = source.Where(x => !x.IsRead);
-        var currentByUid = _visibleMessages.GroupBy(item => item.Uid)
+        static string Key(MailItem item) => item.LocalId.Length > 0 ? "local:" + item.LocalId : "uid:" + item.Uid;
+        var currentByUid = _visibleMessages.GroupBy(Key)
             .ToDictionary(group => group.Key, group => group.First());
         var desired = SortMessages(source).Select(item =>
         {
-            if (!currentByUid.TryGetValue(item.Uid, out MailItem? current)) return item;
+            if (!currentByUid.TryGetValue(Key(item), out MailItem? current)) return item;
             current.IsRead = item.IsRead;
             current.IsFlagged = item.IsFlagged;
             return current;
@@ -494,7 +519,7 @@ public partial class MainWindow : Window
             _ => _settings.SortDescending ? source.OrderByDescending(x => x.Date) : source.OrderBy(x => x.Date)
         };
 
-    private bool IsActiveInbox(string email) => !_calendarMode &&
+    private bool IsActiveInbox(string email) => !_calendarMode && _localFolderId is null &&
         _folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase) &&
         email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase);
 
@@ -552,41 +577,52 @@ public partial class MainWindow : Window
         ToLabel.Text = Localizer.T("to") + " : " + item.To + "  ·  " + item.DateLabel;
         BodyLabel.Text = Localizer.T("loading");
         AttachmentsLabel.Text = "";
-        if (account is null || _password is null) return;
+        if (item.LocalId.Length == 0 && (account is null || _password is null)) return;
         try
         {
-            await using var session = await ImapSession.ConnectAsync(account, _password);
-            var content = await session.LoadMessageAsync(folder, item.Uid);
-            if (_selected != item || _account != account || _folder != folder) return;
+            MailContent content;
+            if (item.LocalId.Length > 0)
+            {
+                content = await Task.Run(() => _localMailStore.LoadMessage(item.LocalId));
+                if (_selected != item || _localFolderId is null) return;
+                if (!item.IsRead) SetLocalRead(item, true);
+            }
+            else
+            {
+                await using var session = await ImapSession.ConnectAsync(account!, _password!);
+                content = await session.LoadMessageAsync(folder, item.Uid);
+                if (_selected != item || _account != account || _folder != folder || _localFolderId is not null) return;
+                if (!item.IsRead)
+                {
+                    try
+                    {
+                        await session.SetReadAsync(folder, item.Uid, true);
+                        if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+                            SetInboxUnreadCount(account!.Email, await session.GetUnreadCountAsync("INBOX"));
+                        if (_account == account && _folder == folder)
+                        {
+                            foreach (var message in _messages.Concat(_searchResults ?? []))
+                                if (message.Uid == item.Uid) message.IsRead = true;
+                            item.IsRead = true;
+                        }
+                    }
+                    catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
+                }
+            }
+            if (_selected != item) return;
             _selectedContent = content;
             BodyLabel.Text = content.PlainText;
             _unsubscribeAction = content.Unsubscribe;
             UnsubscribePanel.Visibility = content.Unsubscribe is null ? Visibility.Collapsed : Visibility.Visible;
             UnsubscribeButton.ToolTip = content.Unsubscribe?.Url.AbsoluteUri;
-            if (!item.IsRead)
-            {
-                try
-                {
-                    await session.SetReadAsync(folder, item.Uid, true);
-                    if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
-                        SetInboxUnreadCount(account.Email, await session.GetUnreadCountAsync("INBOX"));
-                    if (_account == account && _folder == folder)
-                    {
-                        foreach (var message in _messages.Concat(_searchResults ?? []))
-                            if (message.Uid == item.Uid) message.IsRead = true;
-                        item.IsRead = true;
-                    }
-                }
-                catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
-            }
-            if (_selected != item || _account != account || _folder != folder) return;
             if (!string.IsNullOrWhiteSpace(content.HtmlText))
             {
                 try
                 {
                     var rendered = SafeHtmlRenderer.Render(content.HtmlText);
                     ApplyRenderedMail(rendered);
-                    bool automaticImages = _settings.AutoLoadImages.TryGetValue(account.Email, out bool enabled) && enabled;
+                    bool automaticImages = item.LocalId.Length == 0 && account is not null &&
+                        _settings.AutoLoadImages.TryGetValue(account.Email, out bool enabled) && enabled;
                     await ShowTemplateAsync(content.HtmlText, item);
                     if (automaticImages) await LoadImagesAsync();
                 }
@@ -804,6 +840,25 @@ public partial class MainWindow : Window
         MessageColumn.Width = new GridLength(0);
         MessageSplitterColumn.Width = new GridLength(0);
         CalendarPanel.Visibility = Visibility.Visible;
+        if (_localFolderId is not null)
+        {
+            if (_calendarLoaded) return;
+            string localFolderId = _localFolderId;
+            CalendarHint.Text = Localizer.T("loading");
+            try
+            {
+                var messages = _messages.ToList();
+                var invites = await Task.Run(() => messages.Select(item =>
+                    CalendarSupport.Parse(_localMailStore.LoadMessage(item.LocalId).CalendarText))
+                    .Where(invite => invite is not null).OrderBy(invite => invite!.Start).ToList());
+                if (_localFolderId != localFolderId) return;
+                EventList.ItemsSource = invites;
+                CalendarHint.Text = invites.Count == 0 ? Localizer.T("noEvents") : Localizer.T("localCalendar");
+                _calendarLoaded = true;
+            }
+            catch (Exception ex) { CalendarHint.Text = Localizer.T("failed") + ": " + ex.Message; }
+            return;
+        }
         if (_calendarLoaded || _account is null || _password is null) return;
         CalendarHint.Text = Localizer.T("loading");
         try
@@ -910,8 +965,17 @@ public partial class MainWindow : Window
 
     private async Task NavigateToInboxAsync()
     {
-        if (!_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+        if (_localFolderId is not null || !_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
         {
+            bool leavingLocal = _localFolderId is not null;
+            _localFolderId = null;
+            RefreshLocalFolders();
+            if (leavingLocal)
+            {
+                _messages = [];
+                _visibleMessages.Clear();
+                _folderTotalCount = 0;
+            }
             _folder = "INBOX";
             _folderDelimiter = _allFolders.FirstOrDefault(folder =>
                 folder.ServerName.Equals("INBOX", StringComparison.OrdinalIgnoreCase))?.Delimiter ?? '/';
@@ -927,7 +991,8 @@ public partial class MainWindow : Window
     private async void CalendarButton_Click(object sender, RoutedEventArgs e) => await ShowCalendarAsync();
     private async void FolderList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_updatingFolders || FolderList.SelectedItem is not MailFolder folder || folder.ServerName == _folder) return;
+        if (_updatingFolders || FolderList.SelectedItem is not MailFolder folder ||
+            (_localFolderId is null && folder.ServerName == _folder)) return;
         if (!folder.CanSelect)
         {
             _updatingFolders = true;
@@ -954,6 +1019,8 @@ public partial class MainWindow : Window
             return;
         }
         _folder = folder.ServerName;
+        _localFolderId = null;
+        RefreshLocalFolders();
         _folderDelimiter = folder.Delimiter;
         _searchCts?.Cancel();
         _searchResults = null;

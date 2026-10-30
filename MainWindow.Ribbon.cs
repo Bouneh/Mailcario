@@ -93,7 +93,7 @@ public partial class MainWindow
         if (!IsInitialized) return;
         bool hasMessage = _selected is not null;
         RibbonReply.IsEnabled = RibbonForward.IsEnabled = RibbonMarkRead.IsEnabled = RibbonMarkUnread.IsEnabled = hasMessage;
-        RibbonRenameFolder.IsEnabled = !_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase);
+        RibbonRenameFolder.IsEnabled = _localFolderId is null && !_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase);
         FileEditAccount.IsEnabled = _accounts.Count > 0;
         FileSwitchAccount.IsEnabled = _accounts.Count > 0;
     }
@@ -329,14 +329,25 @@ public partial class MainWindow
 
     private async void RibbonMarkRead_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is { } mail) await RunImapActionAsync(s => s.SetReadAsync(_folder, mail.Uid, true));
+        if (_selected is not { } mail) return;
+        if (mail.LocalId.Length > 0) SetLocalRead(mail, true);
+        else await RunImapActionAsync(s => s.SetReadAsync(_folder, mail.Uid, true));
     }
     private async void RibbonMarkUnread_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is { } mail) await RunImapActionAsync(s => s.SetReadAsync(_folder, mail.Uid, false));
+        if (_selected is not { } mail) return;
+        if (mail.LocalId.Length > 0) SetLocalRead(mail, false);
+        else await RunImapActionAsync(s => s.SetReadAsync(_folder, mail.Uid, false));
     }
-    private async void RibbonMarkFolderRead_Click(object sender, RoutedEventArgs e) =>
+    private async void RibbonMarkFolderRead_Click(object sender, RoutedEventArgs e)
+    {
+        if (_localFolderId is not null)
+        {
+            foreach (MailItem message in _messages.Where(item => !item.IsRead).ToList()) SetLocalRead(message, true);
+            return;
+        }
         await RunImapActionAsync(s => s.MarkAllReadAsync(_folder));
+    }
     private async void RibbonRefreshFolders_Click(object sender, RoutedEventArgs e) => await RefreshAsync(true);
 
     private async void RibbonNewFolder_Click(object sender, RoutedEventArgs e)
@@ -379,17 +390,26 @@ public partial class MainWindow
 
     private string? FolderNamePrompt(string title, string initial)
     {
+        Window prompt = CreateFolderNamePromptWindow(title, initial, out TextBox input);
+        return prompt.ShowDialog() == true ? input.Text : null;
+    }
+
+    private Window CreateFolderNamePromptWindow(string title, string initial, out TextBox input)
+    {
         var prompt = new Window
         {
-            Title = title, Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Width = 400, Height = 185, ResizeMode = ResizeMode.NoResize,
+            Title = title, Owner = IsLoaded ? this : null,
+            WindowStartupLocation = IsLoaded ? WindowStartupLocation.CenterOwner : WindowStartupLocation.CenterScreen,
+            Width = 400, MinHeight = 220, SizeToContent = SizeToContent.Height,
+            ResizeMode = ResizeMode.NoResize,
             Background = (Brush)FindResource("Canvas"), Foreground = (Brush)FindResource("Ink"), ShowInTaskbar = false
         };
         WindowTheme.Attach(prompt);
         var root = new StackPanel { Margin = new Thickness(22) };
         root.Children.Add(new TextBlock { Text = Localizer.T("folderName"), Margin = new Thickness(0, 0, 0, 8) });
-        var input = new TextBox { Text = initial };
-        root.Children.Add(input);
+        var field = new TextBox { Text = initial };
+        input = field;
+        root.Children.Add(field);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         var cancel = new Button { Content = Localizer.T("cancel"), Margin = new Thickness(0, 0, 8, 0) };
         cancel.Click += (_, _) => prompt.DialogResult = false;
@@ -399,7 +419,7 @@ public partial class MainWindow
         controls.Children.Add(save);
         root.Children.Add(controls);
         prompt.Content = root;
-        prompt.Loaded += (_, _) => { input.Focus(); input.SelectAll(); };
-        return prompt.ShowDialog() == true ? input.Text : null;
+        prompt.Loaded += (_, _) => { field.Focus(); field.SelectAll(); };
+        return prompt;
     }
 }

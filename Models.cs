@@ -22,6 +22,7 @@ public sealed class MailItem : System.ComponentModel.INotifyPropertyChanged
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public int Sequence { get; init; }
     public uint Uid { get; init; }
+    public string LocalId { get; init; } = "";
     public string From { get; init; } = "";
     public string FromAddress { get; init; } = "";
     public string To { get; init; } = "";

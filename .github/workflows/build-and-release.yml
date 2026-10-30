@@ -36,6 +36,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Folder notification check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --attachment-check
           if ($LASTEXITCODE -ne 0) { throw 'Attachment decoding and preview check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --local-folder-check
+          if ($LASTEXITCODE -ne 0) { throw 'Local folder check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --single-instance-check
           if ($LASTEXITCODE -ne 0) { throw 'Single instance activation check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --unread-badge-check

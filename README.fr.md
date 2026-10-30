@@ -37,6 +37,10 @@ Chaque dossier charge d’abord les messages récents, puis les plus anciens qua
 
 Un clic droit sur un dossier permet d’activer ou de désactiver ses notifications. Un message déplacé par une règle Mailcario peut ainsi déclencher une alerte depuis son dossier de destination ; un clic sur l’alerte ouvre ce dossier. Les options générales de notification, de son et d’aperçu restent dans **Paramètres**.
 
+### Dossiers locaux
+
+Utilisez **+** à côté de **Dossiers locaux** pour créer un dossier sur ce PC. Sélectionnez un ou plusieurs messages du serveur, puis glissez-les sur un dossier local ou faites un clic droit et choisissez **Copier dans un dossier local**. Mailcario conserve le message complet, pièces jointes comprises, pour le lire hors connexion. Les originaux restent dans la boîte mail jusqu’à ce que vous les supprimiez séparément. Un clic droit permet de renommer ou de supprimer un dossier local. Les copies sont enregistrées dans `%LOCALAPPDATA%\Mailcario\LocalFolders` et ne sont pas synchronisées avec d’autres appareils ; pensez à inclure ce répertoire dans vos sauvegardes.
+
 Les pièces jointes reçues apparaissent dans le volet de lecture. Vous pouvez les télécharger, prévisualiser les PDF, images et fichiers texte dans Mailcario, et imprimer ces formats. Les autres types de fichiers peuvent être enregistrés puis ouverts avec une application compatible.
 
 ### Aperçu

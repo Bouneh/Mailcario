@@ -17,6 +17,75 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--local-folder-check")
+        {
+            string root = Path.Combine(AppContext.BaseDirectory, "Mailcario-local-check-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var store = new LocalMailStore(root);
+                var folder = store.CreateFolder("Archives personnelles");
+                byte[] raw = Encoding.UTF8.GetBytes(
+                    "From: Alice <alice@example.invalid>\r\nTo: Bob <bob@example.invalid>\r\n" +
+                    "Subject: Local copy\r\nMIME-Version: 1.0\r\n" +
+                    "Content-Type: multipart/mixed; boundary=\"localtest\"\r\n\r\n" +
+                    "--localtest\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello offline.\r\n" +
+                    "--localtest\r\nContent-Type: text/plain; name=\"proof.txt\"\r\n" +
+                    "Content-Disposition: attachment; filename=\"proof.txt\"\r\n" +
+                    "Content-Transfer-Encoding: base64\r\n\r\naGVsbG8=\r\n--localtest--\r\n");
+                var source = new MailItem { Uid = 42, From = "Alice <alice@example.invalid>",
+                    FromAddress = "alice@example.invalid", To = "Bob <bob@example.invalid>",
+                    Subject = "Local copy", Date = DateTimeOffset.UtcNow };
+                var second = new MailItem { Uid = 43, Subject = "Another message" };
+                var dragAccount = new MailAccount { Email = "bob@example.invalid" };
+                var drag = LocalMailDragPayload.Create(dragAccount, "INBOX", source, [source, second]);
+                var record = store.CopyMessage(folder.Id, "bob@example.invalid", "INBOX", source, raw);
+                var reopened = new LocalMailStore(root);
+                var local = reopened.ListMessages(folder.Id).Single().ToMailItem();
+                var content = reopened.LoadMessage(local.LocalId);
+                bool passed = drag is { Messages.Count: 2 } && drag.SourceFolder == "INBOX" &&
+                    LocalMailDragPayload.Create(dragAccount, "INBOX", local, [local]) is null &&
+                    LocalMailDragPayload.Create(dragAccount, "INBOX", source, [second]) is null &&
+                    reopened.ListFolders().Single().Name == folder.Name &&
+                    local.LocalId == record.Id && local.Subject == source.Subject &&
+                    local.Uid == 0 && source.Uid == 42 &&
+                    content.PlainText.Contains("Hello offline.") &&
+                    content.Attachments.Count == 1 && content.Attachments[0].FileName == "proof.txt" &&
+                    Encoding.UTF8.GetString(content.Attachments[0].Bytes) == "hello" &&
+                    File.ReadAllBytes(Directory.GetFiles(Path.Combine(root, "Messages"), "*.eml").Single())
+                        .SequenceEqual(raw);
+                var checkApp = new App();
+                checkApp.InitializeComponent();
+                ThemeManager.Initialize("dark");
+                var window = new MainWindow(reopened);
+                typeof(MainWindow).GetField("_offlineMode", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(window, true);
+                typeof(MainWindow).GetMethod("RefreshLocalFolders", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(window, null);
+                ((ListBox)window.FindName("LocalFolderList")).SelectedIndex = 0;
+                passed &= ((TextBlock)window.FindName("FolderTitle")).Text == folder.Name &&
+                    ((ListBox)window.FindName("MessageList")).Items.Count == 1;
+                window.Close();
+                ThemeManager.Shutdown();
+                reopened.SetRead(local.LocalId, true);
+                passed &= reopened.ListMessages(folder.Id).Single().IsRead;
+                reopened.RenameFolder(folder.Id, "Saved mail");
+                passed &= reopened.ListFolders().Single().Name == "Saved mail";
+                reopened.DeleteMessage(local.LocalId);
+                passed &= reopened.ListMessages(folder.Id).Count == 0 &&
+                    Directory.GetFiles(Path.Combine(root, "Messages"), "*.eml").Length == 0;
+                reopened.DeleteFolder(folder.Id);
+                passed &= reopened.ListFolders().Count == 0;
+                Console.WriteLine(passed ? "Local folder check passed" : "Local folder check failed");
+                if (!passed) Environment.ExitCode = 1;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Local folder check failed: " + ex);
+                Environment.ExitCode = 1;
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+            return;
+        }
         if (args.Length > 0 && args[0] == "--single-instance-check")
         {
             string name = "Preview" + Guid.NewGuid().ToString("N");
@@ -1217,7 +1286,17 @@ internal static class Program
         Render(filePreview, 1320, 780, Path.Combine(output, "file.png"));
         Render(new SettingsWindow(new ClientSettings(), sampleAccounts), 600, 700, Path.Combine(output, "settings.png"));
         Render(new SettingsWindow(new ClientSettings(), sampleAccounts), 600, 850, Path.Combine(output, "settings-full.png"));
-        Render(new AboutWindow(), 500, 340, Path.Combine(output, "about.png"));
+        var aboutPreview = new AboutWindow();
+        ((Button)aboutPreview.FindName("DownloadButton")).Visibility = Visibility.Visible;
+        ((TextBlock)aboutPreview.FindName("UpdateStatus")).Text =
+            string.Format(Localizer.T("availableVersion"), "0.2.8");
+        Render(aboutPreview, 500, 420, Path.Combine(output, "about.png"));
+        var folderPromptOwner = new MainWindow();
+        object?[] folderPromptArgs = [Localizer.T("newLocalFolder"), "test", null];
+        var folderPrompt = (Window)typeof(MainWindow).GetMethod("CreateFolderNamePromptWindow",
+            BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(folderPromptOwner, folderPromptArgs)!;
+        Render(folderPrompt, 400, 190, Path.Combine(output, "folder-name.png"));
+        folderPromptOwner.Close();
         var importPreview = new ThunderbirdImportWindow();
         var previewCandidates = new[]
         {

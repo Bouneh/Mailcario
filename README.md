@@ -37,6 +37,10 @@ Each folder loads recent messages first, then loads older messages as you scroll
 
 Right-click any mail folder to enable or disable notifications for that folder. A message moved by a Mailcario rule can alert you from its destination folder, and clicking the alert opens that folder. The general notification, sound and preview options remain in **Settings**.
 
+### Local folders
+
+Use **+** beside **Local folders** to create a folder on this PC. Select one or more server messages, then drag them onto a local folder or right-click and choose **Copy to local folder**. Mailcario saves the complete message, including attachments, for offline reading. The server originals stay in place until you delete them separately. You can rename or delete local folders with a right-click. Local copies are stored in `%LOCALAPPDATA%\Mailcario\LocalFolders` and are not synced to other devices; include this directory in your backups.
+
 Received attachments are listed in the reading pane. You can download them, preview PDF, image and text files inside Mailcario, and print those previewable formats. Other file types can be saved and opened with a compatible application.
 
 ### A closer look

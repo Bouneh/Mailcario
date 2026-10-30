@@ -13,12 +13,33 @@ public partial class MainWindow
     private void MessageItem_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is not ListBoxItem { DataContext: MailItem mail } row) return;
+        if (!row.IsSelected)
+        {
+            MessageList.SelectedItems.Clear();
+            row.IsSelected = true;
+        }
         string sourceFolder = _folder;
         var menu = new ContextMenu
         {
             Style = (Style)Application.Current.FindResource("MailMessageContextMenuStyle")
         };
         row.ContextMenu = menu;
+        if (mail.LocalId.Length > 0)
+        {
+            AddAction(menu, "copy", async () => await CopyMessageAsync(mail));
+            AddAction(menu, "quickPrint", async () => await PrintMessageAsync(mail));
+            menu.Items.Add(NewSeparator());
+            AddAction(menu, "reply", async () => await ComposeReplyAsync(mail, false));
+            AddAction(menu, "forward", async () => await ComposeForwardAsync(mail));
+            AddAction(menu, mail.IsRead ? "markUnread" : "markRead", () => SetLocalRead(mail, !mail.IsRead));
+            menu.Items.Add(NewSeparator());
+            AddAction(menu, "deleteLocalMessage", () => DeleteLocalMessage(mail));
+            menu.PlacementTarget = row;
+            menu.Placement = PlacementMode.MousePoint;
+            menu.IsOpen = true;
+            e.Handled = true;
+            return;
+        }
         AddAction(menu, "copy", async () => await CopyMessageAsync(mail));
         AddAction(menu, "quickPrint", async () => await PrintMessageAsync(mail));
         menu.Items.Add(NewSeparator());
@@ -50,6 +71,32 @@ public partial class MainWindow
             move.Items.Add(item);
         }
         move.IsEnabled = move.Items.Count > 0;
+        var local = AddSubmenu(menu, "copyToLocalFolder");
+        var account = _account;
+        var selected = MessageList.SelectedItems.OfType<MailItem>().Where(item => item.LocalId.Length == 0).ToList();
+        if (selected.Count == 0) selected.Add(mail);
+        foreach (var target in _localMailStore.ListFolders())
+        {
+            var choice = NewMenuItem("copyToLocalFolder", target.Name);
+            choice.Click += async (_, _) =>
+            {
+                if (account is not null) await CopyToLocalFolderAsync(selected, sourceFolder, account, target.Id);
+            };
+            local.Items.Add(choice);
+        }
+        local.Items.Add(NewSeparator());
+        AddAction(local, "newLocalFolder", async () =>
+        {
+            string? name = FolderNamePrompt(Localizer.T("newLocalFolder"), "");
+            if (string.IsNullOrWhiteSpace(name) || account is null) return;
+            try
+            {
+                var target = _localMailStore.CreateFolder(name);
+                RefreshLocalFolders();
+                await CopyToLocalFolderAsync(selected, sourceFolder, account, target.Id);
+            }
+            catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
+        });
         menu.Items.Add(NewSeparator());
         AddUnavailable(menu, "ignore");
         var junk = FindSpecialFolder("junk");
@@ -128,11 +175,11 @@ public partial class MainWindow
             "findSimilar" or "fromSender" or "sameSubject" => "M9,3 A6,6 0 1 1 8.9,3 M14,14 L19,19",
             "quickActions" => "M11,2 L4,11 9,11 7,18 16,8 11,8 Z",
             "rules" or "createRule" or "manageRules" => "M2,3 L18,3 12,10 12,17 8,19 8,10 Z",
-            "move" => "M2,5 L8,5 10,7 17,7 17,16 2,16 Z M11,11 L18,11 M15,8 L18,11 15,14",
+            "move" or "copyToLocalFolder" or "newLocalFolder" => "M2,5 L8,5 10,7 17,7 17,16 2,16 Z M11,11 L18,11 M15,8 L18,11 15,14",
             "ignore" => "M5,5 L15,15 M15,5 L5,15",
             "junk" or "moveToJunk" or "blockSender" => "M10,2 L19,18 1,18 Z M10,7 L10,12 M10,15 L10,15.2",
             "restore" => "M4,9 A7,7 0 1 1 5,15 M4,4 L4,9 9,9",
-            "delete" => "M4,5 L16,5 M6,5 L7,18 13,18 14,5 M8,3 L12,3 M9,8 L9,15 M11,8 L11,15",
+            "delete" or "deleteLocalMessage" => "M4,5 L16,5 M6,5 L7,18 13,18 14,5 M8,3 L12,3 M9,8 L9,15 M11,8 L11,15",
             "archive" => "M2,4 L18,4 18,8 2,8 Z M4,8 L4,17 16,17 16,8 M8,11 L12,11",
             "enableFolderNotifications" or "disableFolderNotifications" => "M4,12 L4,8 C4,4 12,4 12,8 L12,12 14,14 2,14 Z M7,15 C7,17 9,17 9,15",
             _ => "M3,3 L17,3 17,17 3,17 Z"
@@ -141,9 +188,9 @@ public partial class MainWindow
         {
             "reply" or "replyAll" => "IconReply",
             "forward" => "IconForward",
-            "delete" or "junk" or "moveToJunk" or "blockSender" => "IconDanger",
+            "delete" or "deleteLocalMessage" or "junk" or "moveToJunk" or "blockSender" => "IconDanger",
             "archive" => "IconSync",
-            "move" or "rules" or "createRule" or "manageRules" => "IconFolder",
+            "move" or "copyToLocalFolder" or "newLocalFolder" or "rules" or "createRule" or "manageRules" => "IconFolder",
             "enableFolderNotifications" or "disableFolderNotifications" => "IconSync",
             _ => "IconNeutral"
         };
@@ -203,6 +250,7 @@ public partial class MainWindow
     private async Task<string> MessagePlainTextAsync(MailItem mail)
     {
         if (mail == _selected && _selectedContent is not null) return _selectedContent.PlainText;
+        if (mail.LocalId.Length > 0) return (await Task.Run(() => _localMailStore.LoadMessage(mail.LocalId))).PlainText;
         if (_account is null || _password is null) return "";
         await using var session = await ImapSession.ConnectAsync(_account, _password);
         return (await session.LoadMessageAsync(_folder, mail.Uid)).PlainText;

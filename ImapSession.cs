@@ -351,11 +351,17 @@ public sealed class ImapSession : IAsyncDisposable
 
     public async Task<MailContent> LoadMessageAsync(string folder, uint uid, CancellationToken token = default)
     {
+        byte[] literal = await LoadRawMessageAsync(folder, uid, token);
+        return await Task.Run(() => MimeReader.ReadMessage(literal), token);
+    }
+
+    public async Task<byte[]> LoadRawMessageAsync(string folder, uint uid, CancellationToken token = default)
+    {
         await SelectAsync(folder, token);
         var response = await CommandAsync($"UID FETCH {uid} (BODY.PEEK[])", token, 50_000_000);
         byte[]? literal = response.Parts.FirstOrDefault(p => p.Literal is not null)?.Literal;
         if (literal is null) throw new IOException("The message is no longer available.");
-        return await Task.Run(() => MimeReader.ReadMessage(literal), token);
+        return literal;
     }
 
     public async Task<string> LoadMessagePreviewAsync(string folder, uint uid, CancellationToken token = default)

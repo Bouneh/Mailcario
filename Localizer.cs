@@ -9,6 +9,17 @@ public static class Localizer
 
     private static readonly Dictionary<string, (string Fr, string En)> Words = new()
     {
+        ["localFolders"] = ("Dossiers locaux", "Local folders"),
+        ["newLocalFolder"] = ("Créer un dossier local", "Create local folder"),
+        ["renameLocalFolder"] = ("Renommer le dossier local", "Rename local folder"),
+        ["deleteLocalFolder"] = ("Supprimer le dossier local", "Delete local folder"),
+        ["deleteLocalFolderConfirm"] = ("Supprimer le dossier local « {0} » et tous ses messages sur ce PC ?", "Delete local folder “{0}” and all its messages from this PC?"),
+        ["copyToLocalFolder"] = ("Copier dans un dossier local", "Copy to local folder"),
+        ["copyingLocalMessages"] = ("Copie des messages sur ce PC…", "Copying messages to this PC…"),
+        ["copiedLocalMessages"] = ("{0} message(s) copié(s) sur ce PC. Les originaux restent sur le serveur.", "{0} message(s) copied to this PC. The originals remain on the server."),
+        ["partialLocalCopy"] = ("{0} message(s) copié(s). La copie s'est interrompue : {1}", "{0} message(s) copied. Copy stopped: {1}"),
+        ["deleteLocalMessage"] = ("Supprimer la copie locale", "Delete local copy"),
+        ["deleteLocalMessageConfirm"] = ("Supprimer définitivement cette copie locale de ce PC ?", "Permanently delete this local copy from this PC?"),
         ["thunderbirdImportMenu"] = ("Importer depuis Thunderbird", "Import from Thunderbird"),
         ["thunderbirdImportTitle"] = ("Importer des comptes Thunderbird", "Import Thunderbird accounts"),
         ["thunderbirdImportDescription"] = ("Choisissez les comptes IMAP à ajouter. Mailcario reprend leurs adresses et paramètres de serveur.", "Choose the IMAP accounts to add. Mailcario copies their addresses and server settings."),

@@ -55,8 +55,8 @@ public partial class MainWindow
                     NotificationsEnabled = notified.Contains(folder.ServerName)
                 }).ToList();
             FolderList.ItemsSource = visible;
-            FolderList.SelectedItem = visible.FirstOrDefault(x => x.ServerName.Equals(_folder,
-                StringComparison.OrdinalIgnoreCase));
+            FolderList.SelectedItem = _localFolderId is null ? visible.FirstOrDefault(x =>
+                x.ServerName.Equals(_folder, StringComparison.OrdinalIgnoreCase)) : null;
         }
         finally { _updatingFolders = false; }
         FolderOptionsButton.IsEnabled = _allFolders.Count > 0;

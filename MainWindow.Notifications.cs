@@ -229,7 +229,7 @@ public partial class MainWindow
         return true;
     }
 
-    private bool IsActiveFolder(string email, string folder) => !_calendarMode &&
+    private bool IsActiveFolder(string email, string folder) => !_calendarMode && _localFolderId is null &&
         email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase) &&
         folder.Equals(_folder, StringComparison.OrdinalIgnoreCase);
 
