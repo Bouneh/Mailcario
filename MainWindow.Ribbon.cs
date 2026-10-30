@@ -68,6 +68,7 @@ public partial class MainWindow
         FileEditAccount.Content = Localizer.T("editAccount");
         FileClientHeading.Text = Localizer.T("clientSettings");
         FileSettings.Content = Localizer.T("settings");
+        FileScheduled.Content = Localizer.T("scheduledQueue");
         FileAbout.Content = Localizer.T("about");
         FileClose.Content = Localizer.T("closeFile");
         FileQuit.Content = Localizer.T("quitMailcarioTray");
@@ -330,14 +331,12 @@ public partial class MainWindow
     private async void RibbonMarkRead_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is not { } mail) return;
-        if (mail.LocalId.Length > 0) SetLocalRead(mail, true);
-        else await RunImapActionAsync(s => s.SetReadAsync(_folder, mail.Uid, true));
+        await SetMessageReadAsync(mail, true);
     }
     private async void RibbonMarkUnread_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is not { } mail) return;
-        if (mail.LocalId.Length > 0) SetLocalRead(mail, false);
-        else await RunImapActionAsync(s => s.SetReadAsync(_folder, mail.Uid, false));
+        await SetMessageReadAsync(mail, false);
     }
     private async void RibbonMarkFolderRead_Click(object sender, RoutedEventArgs e)
     {

@@ -46,6 +46,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rules and compose check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --account-folder-check
           if ($LASTEXITCODE -ne 0) { throw 'Account presets and folder view check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --unified-organization-check
+          if ($LASTEXITCODE -ne 0) { throw 'Unified conversations and organization check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --undo-send-check
+          if ($LASTEXITCODE -ne 0) { throw 'Undo send check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --contact-memory-check
+          if ($LASTEXITCODE -ne 0) { throw 'Contact indexing and completion check failed.' }
 
   release:
     name: Publish Windows installer

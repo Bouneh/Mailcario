@@ -29,6 +29,14 @@ public partial class SettingsWindow : Window
         SoundCheck.Content = Localizer.T("enableSound");
         PreviewCheck.Content = Localizer.T("notificationPreview");
         IntervalLabel.Text = Localizer.T("checkInterval");
+        UndoSendHeading.Text = Localizer.T("undoSendHeading");
+        UndoSendLabel.Text = Localizer.T("undoSendDelay");
+        UndoSendHint.Text = Localizer.T("undoSendHint");
+        foreach (ComboBoxItem choice in UndoSendBox.Items)
+            choice.Content = choice.Tag?.ToString() == "0" ? Localizer.T("undoSendDisabled") :
+                string.Format(Localizer.T("undoSendSeconds"), choice.Tag);
+        UndoSendBox.SelectedItem = UndoSendBox.Items.Cast<ComboBoxItem>()
+            .FirstOrDefault(x => x.Tag?.ToString() == Settings.UndoSendSeconds.ToString()) ?? UndoSendBox.Items[2];
         LayoutHeading.Text = Localizer.T("layoutSettings");
         RibbonCheck.Content = Localizer.T("showRibbon");
         ReaderCheck.Content = Localizer.T("showReader");
@@ -78,6 +86,8 @@ public partial class SettingsWindow : Window
         Settings.ShowMessagePreview = PreviewCheck.IsChecked == true;
         Settings.CheckIntervalMinutes = int.TryParse((IntervalBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int minutes)
             ? minutes : 2;
+        Settings.UndoSendSeconds = int.TryParse((UndoSendBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int seconds)
+            ? seconds : 10;
         Settings.ThemeMode = (ThemeCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "system";
         Settings.ShowRibbon = RibbonCheck.IsChecked == true;
         Settings.ShowReadingPane = ReaderCheck.IsChecked == true;

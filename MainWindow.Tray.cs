@@ -16,6 +16,7 @@ public partial class MainWindow
     private DrawingIcon? _trayBaseIcon;
     private DrawingIcon? _trayUnreadIcon;
     private bool _hasMailAttention;
+    private bool _lastBalloonWasScheduled;
     private bool _exitRequested;
 
     private void InitializeTrayEvents()
@@ -53,7 +54,11 @@ public partial class MainWindow
             if (e.Button == Forms.MouseButtons.Left)
                 Dispatcher.BeginInvoke(new Action(OpenFromMailNotice));
         };
-        _trayIcon.BalloonTipClicked += (_, _) => Dispatcher.BeginInvoke(new Action(OpenFromNewMailNotice));
+        _trayIcon.BalloonTipClicked += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_lastBalloonWasScheduled) OpenFromMailNotice();
+            else OpenFromNewMailNotice();
+        }));
         UpdateTrayLanguage();
     }
 
@@ -78,6 +83,7 @@ public partial class MainWindow
     private void ShowNewMailBalloon(string folderName, string detail)
     {
         if (_trayIcon is null) return;
+        _lastBalloonWasScheduled = false;
         string title = Localizer.T("newMailNotification") + " · " + folderName;
         _trayIcon.ShowBalloonTip(8000, title.Length > 63 ? title[..63] : title,
             detail.Length > 230 ? detail[..227] + "…" : detail, Forms.ToolTipIcon.None);

@@ -22,14 +22,18 @@ public sealed class LocalMailRecord
     public string Cc { get; set; } = "";
     public string Subject { get; set; } = "";
     public string MessageId { get; set; } = "";
+    public string InReplyTo { get; set; } = "";
+    public string References { get; set; } = "";
     public DateTimeOffset? Date { get; set; }
     public bool IsRead { get; set; }
     public bool IsFlagged { get; set; }
 
     public MailItem ToMailItem() => new()
     {
-        LocalId = Id, From = From, FromAddress = FromAddress, To = To, Cc = Cc,
-        Subject = Subject, MessageId = MessageId, Date = Date, IsRead = IsRead,
+        LocalId = Id, AccountEmail = SourceAccount, FolderName = SourceFolder,
+        From = From, FromAddress = FromAddress, To = To, Cc = Cc,
+        Subject = Subject, MessageId = MessageId, InReplyTo = InReplyTo,
+        References = References, Date = Date, IsRead = IsRead,
         IsFlagged = IsFlagged
     };
 }
@@ -121,7 +125,8 @@ public sealed class LocalMailStore
                 Id = id, FolderId = folderId, SourceAccount = sourceAccount, SourceFolder = sourceFolder,
                 SourceUid = message.Uid, From = message.From, FromAddress = message.FromAddress,
                 To = message.To, Cc = message.Cc, Subject = message.Subject,
-                MessageId = message.MessageId, Date = message.Date,
+                MessageId = message.MessageId, InReplyTo = message.InReplyTo,
+                References = message.References, Date = message.Date,
                 IsRead = message.IsRead, IsFlagged = message.IsFlagged
             };
             Directory.CreateDirectory(_messagesPath);

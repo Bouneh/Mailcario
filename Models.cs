@@ -23,6 +23,29 @@ public sealed class MailItem : System.ComponentModel.INotifyPropertyChanged
     public int Sequence { get; init; }
     public uint Uid { get; init; }
     public string LocalId { get; init; } = "";
+    public string AccountEmail { get; set; } = "";
+    public string FolderName { get; set; } = "";
+    public bool IsSent { get; set; }
+    public bool ShowAccountContext { get; set; }
+    public string InReplyTo { get; init; } = "";
+    public string References { get; init; } = "";
+    public ConversationGroupKey? ConversationGroup { get; set; }
+    private string _categoryName = "";
+    private string _categoryColor = "#4B9CD3";
+    public string CategoryName
+    {
+        get => _categoryName;
+        set { if (_categoryName == value) return; _categoryName = value; PropertyChanged?.Invoke(this,
+            new System.ComponentModel.PropertyChangedEventArgs(nameof(CategoryName))); PropertyChanged?.Invoke(this,
+            new System.ComponentModel.PropertyChangedEventArgs(nameof(HasCategory))); }
+    }
+    public string CategoryColor
+    {
+        get => _categoryColor;
+        set { if (_categoryColor == value) return; _categoryColor = value; PropertyChanged?.Invoke(this,
+            new System.ComponentModel.PropertyChangedEventArgs(nameof(CategoryColor))); }
+    }
+    public bool HasCategory => CategoryName.Length > 0;
     public string From { get; init; } = "";
     public string FromAddress { get; init; } = "";
     public string To { get; init; } = "";
@@ -37,6 +60,7 @@ public sealed class MailItem : System.ComponentModel.INotifyPropertyChanged
         set
         {
             if (_isRead == value) return;
+            ConversationGroup?.OnReadChanged(_isRead, value);
             _isRead = value;
             PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsRead)));
         }
@@ -64,6 +88,9 @@ public sealed class MailItem : System.ComponentModel.INotifyPropertyChanged
             catch (FormatException) { return From; }
         }
     }
+    public string Correspondent => IsSent && !string.IsNullOrWhiteSpace(To) ? To : SenderName;
+    public string AccountContext => AccountEmail + (FolderName.Length == 0 ? "" : " · " +
+        (LocalId.Length > 0 ? FolderName : new MailFolder { ServerName = FolderName, IsSent = IsSent }.DisplayName));
     public string AvatarLetter => SenderName.Length == 0 ? "?" : SenderName[..1].ToUpperInvariant();
     public string DateLabel => Date?.LocalDateTime.ToString("dd MMM HH:mm") ?? "";
     public string DayGroup

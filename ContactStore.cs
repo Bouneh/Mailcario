@@ -11,28 +11,129 @@ internal sealed class ContactEntry
 {
     public string Name { get; set; } = "";
     public string Email { get; set; } = "";
+    public string Source { get; set; } = "manual";
     public string DisplayLabel => string.IsNullOrWhiteSpace(Name) ? Email : $"{Name}  ·  {Email}";
 }
 
 internal static class ContactStore
 {
+    private static readonly object Gate = new();
     private static readonly string PathName = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Mailcario", "contacts.json");
 
     public static List<ContactEntry> Load()
     {
-        try { return JsonSerializer.Deserialize<List<ContactEntry>>(File.ReadAllText(PathName)) ?? []; }
+        lock (Gate) return LoadAt(PathName);
+    }
+
+    private static List<ContactEntry> LoadAt(string path)
+    {
+        try { return JsonSerializer.Deserialize<List<ContactEntry>>(File.ReadAllText(path)) ?? []; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         { return []; }
     }
 
     public static void Save(IEnumerable<ContactEntry> contacts)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(PathName)!);
-        string temporary = PathName + ".tmp";
+        lock (Gate) SaveAt(PathName, contacts);
+    }
+
+    private static void SaveAt(string path, IEnumerable<ContactEntry> contacts)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        string temporary = path + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(contacts.OrderBy(contact => contact.Name),
             new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(temporary, PathName, true);
+        File.Move(temporary, path, true);
+    }
+
+    public static void RememberFromMessages(IEnumerable<MailItem> messages, IEnumerable<string> ownAddresses,
+        string? testPath = null)
+    {
+        var candidates = new List<(MailAddress Address, string Source)>();
+        foreach (MailItem message in messages)
+        {
+            if (message.IsSent)
+            {
+                candidates.AddRange(ParseAddresses(message.To).Select(address => (address, "sent")));
+                candidates.AddRange(ParseAddresses(message.Cc).Select(address => (address, "sent")));
+            }
+            else
+            {
+                var sender = ParseAddresses(message.From).FirstOrDefault() ??
+                    ParseAddresses(message.FromAddress).FirstOrDefault();
+                if (sender is not null) candidates.Add((sender, "received"));
+            }
+        }
+        Remember(candidates, ownAddresses, testPath);
+    }
+
+    public static void RememberSentRecipients(string to, string cc, string bcc,
+        IEnumerable<string> ownAddresses, string? testPath = null) =>
+        Remember(ParseAddresses(to).Concat(ParseAddresses(cc)).Concat(ParseAddresses(bcc))
+                .Select(address => (address, "sent")),
+            ownAddresses, testPath);
+
+    private static void Remember(IEnumerable<(MailAddress Address, string Source)> candidates,
+        IEnumerable<string> ownAddresses,
+        string? testPath)
+    {
+        string path = testPath ?? PathName;
+        var own = ownAddresses.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        lock (Gate)
+        {
+            var contacts = LoadAt(path);
+            var existing = contacts.Where(contact => contact.Email.Length > 0)
+                .GroupBy(contact => contact.Email, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            bool changed = false;
+            foreach ((MailAddress address, string source) in candidates)
+            {
+                string email = address.Address.Trim();
+                string local = email.Split('@')[0];
+                if (email.Length > 254 || own.Contains(email) ||
+                    local.Contains("noreply", StringComparison.OrdinalIgnoreCase) ||
+                    local.Contains("no-reply", StringComparison.OrdinalIgnoreCase) ||
+                    local.Contains("donotreply", StringComparison.OrdinalIgnoreCase) ||
+                    local.Equals("postmaster", StringComparison.OrdinalIgnoreCase) ||
+                    local.Equals("mailer-daemon", StringComparison.OrdinalIgnoreCase)) continue;
+                string name = address.DisplayName.Trim();
+                if (existing.TryGetValue(email, out ContactEntry? contact))
+                {
+                    if (contact.Name.Length == 0 && name.Length > 0 && contact.Source != "manual")
+                    { contact.Name = name; changed = true; }
+                    if (contact.Source == "received" && source == "sent")
+                    { contact.Source = "sent"; changed = true; }
+                }
+                else
+                {
+                    contact = new ContactEntry { Email = email, Name = name, Source = source };
+                    contacts.Add(contact);
+                    existing.Add(email, contact);
+                    changed = true;
+                }
+            }
+            if (changed) SaveAt(path, contacts);
+        }
+    }
+
+    private static IEnumerable<MailAddress> ParseAddresses(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        try
+        {
+            var parsed = new MailAddressCollection();
+            parsed.Add(text.Replace(';', ','));
+            return parsed.Cast<MailAddress>().ToArray();
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
+        {
+            var valid = new List<MailAddress>();
+            foreach (string part in text.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                try { valid.Add(new MailAddress(part)); }
+                catch (Exception invalid) when (invalid is FormatException or ArgumentException) { }
+            return valid;
+        }
     }
 }
 
@@ -88,8 +189,10 @@ internal sealed class ContactsWindow : Window
         columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(250) });
         Grid.SetRow(columns, 1); root.Children.Add(columns);
-        _list.Margin = new Thickness(0, 0, 16, 0);
-        _list.DisplayMemberPath = nameof(ContactEntry.DisplayLabel);
+        _list.ItemTemplate = (DataTemplate)FindResource("ContactListItemTemplate");
+        _list.ItemContainerStyle = (Style)FindResource("ContactListItemStyle");
+        _list.Foreground = (Brush)FindResource("Ink");
+        _list.Background = (Brush)FindResource("Surface");
         _list.SelectionChanged += (_, _) =>
         {
             if (_list.SelectedItem is not ContactEntry contact) return;
@@ -103,7 +206,10 @@ internal sealed class ContactsWindow : Window
         _empty.VerticalAlignment = VerticalAlignment.Center;
         _empty.Margin = new Thickness(24);
         listSurface.Children.Add(_empty);
-        columns.Children.Add(listSurface);
+        columns.Children.Add(new Border { Background = (Brush)FindResource("Surface"),
+            BorderBrush = (Brush)FindResource("Stroke"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5), Padding = new Thickness(3),
+            Margin = new Thickness(0, 0, 16, 0), Child = listSurface });
 
         var editor = new StackPanel { Margin = new Thickness(10, 0, 0, 0) };
         Grid.SetColumn(editor, 1); columns.Children.Add(editor);
@@ -166,6 +272,7 @@ internal sealed class ContactsWindow : Window
             { _status.Foreground = (Brush)FindResource("ErrorText"); _status.Text = Localizer.T("duplicateContact"); return; }
             if (!_contacts.Contains(contact)) _contacts.Add(contact);
             contact.Name = _name.Text.Trim(); contact.Email = email;
+            contact.Source = "manual";
             ContactStore.Save(_contacts);
             RefreshList(); _list.SelectedItem = contact;
             _status.Foreground = (Brush)FindResource("AccentDark");

@@ -321,7 +321,7 @@ public sealed class ImapSession : IAsyncDisposable
 
     private async Task<MailItem?> FetchSummaryAsync(string prefix, CancellationToken token, bool sentFolder = false)
     {
-        var response = await CommandAsync($"{prefix} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])", token, 128_000);
+        var response = await CommandAsync($"{prefix} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])", token, 128_000);
         byte[]? literal = response.Parts.FirstOrDefault(p => p.Literal is not null)?.Literal;
         if (literal is null) return null;
         var headers = MimeReader.ReadHeaders(literal);
@@ -343,6 +343,8 @@ public sealed class ImapSession : IAsyncDisposable
             Cc = MimeReader.DecodeHeader(headers.GetValueOrDefault("cc") ?? ""),
             Subject = MimeReader.DecodeHeader(headers.GetValueOrDefault("subject") ?? "(No subject)"),
             MessageId = headers.GetValueOrDefault("message-id") ?? "",
+            InReplyTo = headers.GetValueOrDefault("in-reply-to") ?? "",
+            References = headers.GetValueOrDefault("references") ?? "",
             Date = date,
             IsRead = Regex.IsMatch(meta, @"\\Seen\b", RegexOptions.IgnoreCase),
             IsFlagged = Regex.IsMatch(meta, @"\\Flagged\b", RegexOptions.IgnoreCase)

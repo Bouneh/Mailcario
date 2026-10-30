@@ -53,7 +53,7 @@
         <Button x:Name="ComposeReviewTab" Click="ComposeTab_Click" Tag="review" Style="{StaticResource RibbonTabButton}"/>
       </StackPanel>
     </Border>
-    <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1" Padding="10,4">
+    <Border x:Name="ComposeRibbonHost" Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1" Padding="10,4">
       <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
       <Grid>
         <StackPanel x:Name="ComposeFileRibbon" Orientation="Horizontal" Visibility="Collapsed">
@@ -128,6 +128,7 @@
           <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="4,5,8,5"/>
           <Button x:Name="ComposeAttachButton" Click="AttachButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE723;" BorderBrush="{DynamicResource IconNeutral}"/>
           <Button x:Name="ComposeSignatureButton" Click="SignatureButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8D4;" BorderBrush="{DynamicResource IconFolder}"/>
+          <Button x:Name="ComposeTemplatesButton" Click="TemplatesButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8A5;" BorderBrush="{DynamicResource IconFolder}"/>
         </StackPanel>
         <StackPanel x:Name="ComposeInsertRibbon" Orientation="Horizontal" Visibility="Collapsed">
           <Button x:Name="ComposeInsertAttachment" Click="AttachButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE723;" BorderBrush="{DynamicResource IconNeutral}"/>
@@ -139,6 +140,8 @@
           <Button x:Name="ComposeOptionsHigh" Click="HighImportanceButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8C9;" BorderBrush="{DynamicResource IconDanger}"/>
           <Button x:Name="ComposeOptionsLow" Click="LowImportanceButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8CB;" BorderBrush="{DynamicResource IconSync}"/>
           <CheckBox x:Name="ReadReceiptCheck" VerticalAlignment="Center" Margin="18,0,0,0"/>
+          <Button x:Name="ScheduleSendButton" Click="ScheduleSendButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE787;" BorderBrush="{DynamicResource IconSync}"/>
+          <Button x:Name="ScheduledQueueButton" Click="ScheduledQueueButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8A5;" BorderBrush="{DynamicResource IconFolder}"/>
         </StackPanel>
         <StackPanel x:Name="ComposeFormatRibbon" Orientation="Horizontal" Visibility="Collapsed">
           <Button x:Name="ComposeFormatBold" Click="BoldButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8DD;" BorderBrush="{DynamicResource IconNeutral}"/>
@@ -169,11 +172,11 @@
       <TextBlock x:Name="FromLabel" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource Muted}"/>
       <ComboBox x:Name="FromAccountBox" Grid.Row="0" Grid.Column="1" DisplayMemberPath="Email" Width="300" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="75,0,0,0" SelectionChanged="FromAccountBox_SelectionChanged"/>
       <TextBlock x:Name="ToLabel" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource Muted}"/>
-      <TextBox x:Name="ToBox" Grid.Row="1" Grid.Column="1" Margin="75,5,18,5" Padding="12,3" Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}"/>
+      <TextBox x:Name="ToBox" Grid.Row="1" Grid.Column="1" Margin="75,5,18,5" Padding="12,3" Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}" TextChanged="RecipientBox_TextChanged" PreviewKeyDown="RecipientBox_PreviewKeyDown" GotKeyboardFocus="RecipientBox_GotFocus"/>
       <TextBlock x:Name="CcLabel" Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource Muted}"/>
-      <TextBox x:Name="CcBox" Grid.Row="2" Grid.Column="1" Margin="75,5,18,5" Padding="12,3" Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}"/>
+      <TextBox x:Name="CcBox" Grid.Row="2" Grid.Column="1" Margin="75,5,18,5" Padding="12,3" Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}" TextChanged="RecipientBox_TextChanged" PreviewKeyDown="RecipientBox_PreviewKeyDown" GotKeyboardFocus="RecipientBox_GotFocus"/>
       <TextBlock x:Name="BccLabel" Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource Muted}" Visibility="Collapsed"/>
-      <TextBox x:Name="BccBox" Grid.Row="3" Grid.Column="1" Margin="75,5,18,5" Padding="12,3" Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}" Visibility="Collapsed"/>
+      <TextBox x:Name="BccBox" Grid.Row="3" Grid.Column="1" Margin="75,5,18,5" Padding="12,3" Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}" Visibility="Collapsed" TextChanged="RecipientBox_TextChanged" PreviewKeyDown="RecipientBox_PreviewKeyDown" GotKeyboardFocus="RecipientBox_GotFocus"/>
       <TextBlock x:Name="SubjectLabel" Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource Muted}"/>
       <TextBox x:Name="SubjectBox" Grid.Row="4" Grid.Column="1" Margin="75,5,18,5" Padding="12,3" Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}"/>
       <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Margin="18,4,18,2">
@@ -188,5 +191,32 @@
     <Border Grid.Row="3" Background="{DynamicResource StatusBar}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,0,0" Padding="14,0">
       <TextBlock x:Name="StatusLabel" Foreground="{DynamicResource ErrorText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
     </Border>
+    <Popup x:Name="RecipientSuggestionsPopup" Placement="Bottom" VerticalOffset="2" StaysOpen="False" AllowsTransparency="True">
+      <Border Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="5" Padding="5" MinWidth="330" MaxWidth="520">
+        <Border.Effect><DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.28"/></Border.Effect>
+        <ListBox x:Name="RecipientSuggestions" DisplayMemberPath="DisplayLabel" MaxHeight="240" BorderThickness="0"
+                 Background="Transparent" Foreground="{DynamicResource Ink}" PreviewMouseLeftButtonUp="RecipientSuggestions_Click">
+          <ListBox.ItemContainerStyle>
+            <Style TargetType="ListBoxItem">
+              <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+              <Setter Property="Padding" Value="10,8"/>
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="SuggestionChrome" Background="Transparent" CornerRadius="4" Margin="1" Padding="{TemplateBinding Padding}">
+                      <ContentPresenter ContentSource="Content"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="SuggestionChrome" Property="Background" Value="{DynamicResource AccentSoft}"/></Trigger>
+                      <Trigger Property="IsSelected" Value="True"><Setter TargetName="SuggestionChrome" Property="Background" Value="{DynamicResource AccentSoft}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </ListBox.ItemContainerStyle>
+        </ListBox>
+      </Border>
+    </Popup>
   </Grid>
 </Window>

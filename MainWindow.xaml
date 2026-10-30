@@ -1,6 +1,8 @@
 <Window x:Class="Mailcario.MainWindow"
+        PreviewKeyDown="MainWindow_PreviewKeyDown"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Mailcario"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="Mailcario" Icon="Assets/Mailcario-512.png"
         Width="1280" Height="760" MinWidth="1040" MinHeight="600" WindowState="Maximized"
@@ -196,6 +198,12 @@
               <StackPanel Orientation="Horizontal"><TextBlock Text="+" FontSize="20" FontWeight="Normal" Margin="0,-4,9,-3"/><TextBlock x:Name="NewButtonLabel" VerticalAlignment="Center"/></StackPanel>
             </Button>
             <TextBlock x:Name="NavigationLabel" Foreground="{DynamicResource Ink}" FontSize="13" FontWeight="SemiBold" Margin="10,5,0,12"/>
+            <Button x:Name="UnifiedButton" Style="{StaticResource NavButton}" Margin="0,0,0,5" Click="UnifiedButton_Click">
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <Viewbox Width="17" Height="17" Margin="0,0,12,0"><Path Data="M2,5 L9,5 L9,12 L2,12 Z M11,5 L18,5 L18,12 L11,12 Z M2,14 L18,14 L18,17 L2,17" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" Fill="Transparent"/></Viewbox>
+                <TextBlock x:Name="UnifiedButtonLabel" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
             <Button x:Name="InboxButton" Style="{StaticResource NavActiveButton}" Margin="0,0,0,5" Click="InboxButton_Click">
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                 <Viewbox Width="17" Height="17" Margin="0,0,12,0"><Path Data="M2,4 L18,4 L18,16 L2,16 Z M2,5 L10,11 L18,5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" Fill="Transparent"/></Viewbox>
@@ -296,6 +304,7 @@
               <StackPanel Grid.Row="1" Orientation="Horizontal">
                 <Button x:Name="AllFilterButton" Click="AllFilterButton_Click" Style="{StaticResource RibbonTabButton}" Padding="8,2" Margin="0,0,4,0"/>
                 <Button x:Name="UnreadFilterButton" Click="UnreadFilterButton_Click" Style="{StaticResource RibbonTabButton}" Padding="8,2"/>
+                <Button x:Name="ConversationButton" Click="ConversationButton_Click" Style="{StaticResource RibbonTabButton}" Padding="8,2" Margin="9,0,0,0"/>
               </StackPanel>
               <Button x:Name="SortSummaryButton" Grid.Row="1" Grid.Column="1" Click="SortSummaryButton_Click" Style="{StaticResource RibbonTabButton}" Padding="6,2" Foreground="{DynamicResource Muted}"/>
             </Grid>
@@ -311,7 +320,13 @@
                   <GroupStyle.HeaderTemplate>
                     <DataTemplate>
                       <Border Background="{DynamicResource MessageGroup}" Padding="16,5" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1">
-                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"/>
+                        <ContentControl Content="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Padding="0">
+                          <ContentControl.Resources>
+                            <DataTemplate DataType="{x:Type local:ConversationGroupKey}">
+                              <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource Ink}" FontSize="11" FontWeight="SemiBold"/>
+                            </DataTemplate>
+                          </ContentControl.Resources>
+                        </ContentControl>
                       </Border>
                     </DataTemplate>
                   </GroupStyle.HeaderTemplate>
@@ -348,9 +363,16 @@
                         <TextBlock Text="&#xE7C1;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" DockPanel.Dock="Right" FontSize="12" Foreground="{DynamicResource IconDanger}" Margin="6,1,0,0">
                           <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsFlagged}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                         </TextBlock>
-                        <TextBlock Text="{Binding SenderName}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Correspondent}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis"/>
                       </DockPanel>
                       <TextBlock Text="{Binding Subject}" Foreground="{DynamicResource Ink}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+                      <Border Background="{Binding CategoryColor}" CornerRadius="4" HorizontalAlignment="Left" Padding="5,1" Margin="0,4,0,0">
+                        <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasCategory}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style>
+                        <TextBlock Text="{Binding CategoryName}" Foreground="White" FontSize="10"/>
+                      </Border>
+                      <TextBlock Text="{Binding AccountContext}" Foreground="{DynamicResource Muted}" FontSize="10" TextTrimming="CharacterEllipsis" Margin="0,3,0,0">
+                        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ShowAccountContext}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                      </TextBlock>
                     </StackPanel>
                   </Grid>
                 </DataTemplate>
@@ -511,6 +533,11 @@
       <Grid Margin="14,3">
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <TextBlock x:Name="StatusLabel" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        <StackPanel x:Name="UndoSendPanel" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+          <TextBlock x:Name="UndoSendStatus" Foreground="{DynamicResource Ink}" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
+          <Button x:Name="UndoSendButton" Click="UndoSendButton_Click" Background="Transparent" BorderThickness="0"
+                  Foreground="{DynamicResource AccentDark}" FontWeight="SemiBold" FontSize="11" Padding="4,1" Cursor="Hand"/>
+        </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <ProgressBar x:Name="SyncProgress" Width="48" Height="4" IsIndeterminate="True" Visibility="Collapsed" Margin="0,0,7,0"/>
           <TextBlock x:Name="SyncStatusText" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Center" Margin="0,0,16,0"/>
@@ -564,6 +591,7 @@
             <Button x:Name="FileEditAccount" Style="{StaticResource FileActionButton}" Tag="&#xE713;" Click="AccountButton_Click" HorizontalAlignment="Left" Margin="0,0,0,22"/>
             <TextBlock x:Name="FileClientHeading" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,0,0,10"/>
             <Button x:Name="FileSettings" Style="{StaticResource FileActionButton}" Tag="&#xE713;" Click="SettingsTab_Click" HorizontalAlignment="Left" Margin="0,0,0,3"/>
+            <Button x:Name="FileScheduled" Style="{StaticResource FileActionButton}" Tag="&#xE787;" Click="FileScheduled_Click" HorizontalAlignment="Left" Margin="0,0,0,3"/>
             <Button x:Name="FileAbout" Style="{StaticResource FileActionButton}" Tag="&#xE946;" Click="AboutTab_Click" HorizontalAlignment="Left" Margin="0,0,0,3"/>
             <Button x:Name="FileClose" Style="{StaticResource FileActionButton}" Tag="&#xE711;" Click="FileClose_Click" HorizontalAlignment="Left"/>
             <Button x:Name="FileQuit" Style="{StaticResource FileActionButton}" Tag="&#xE7E8;" Click="FileQuit_Click" HorizontalAlignment="Left" Margin="0,8,0,0"/>

@@ -12,6 +12,7 @@ public sealed class ClientSettings
     public bool PlaySound { get; set; } = true;
     public bool ShowMessagePreview { get; set; } = true;
     public int CheckIntervalMinutes { get; set; } = 2;
+    public int UndoSendSeconds { get; set; } = 10;
     public bool ShowRibbon { get; set; } = true;
     public bool HomeCommands { get; set; } = true;
     public bool SyncCommands { get; set; } = true;
@@ -19,6 +20,7 @@ public sealed class ClientSettings
     public bool ViewCommands { get; set; } = true;
     public bool ShowReadingPane { get; set; } = true;
     public bool CompactMessages { get; set; }
+    public bool ConversationView { get; set; }
     public string SortBy { get; set; } = "date";
     public bool SortDescending { get; set; } = true;
     public string ThemeMode { get; set; } = "system";
@@ -33,6 +35,7 @@ public sealed class ClientSettings
             if (!File.Exists(PathName)) return new ClientSettings();
             var settings = JsonSerializer.Deserialize<ClientSettings>(File.ReadAllText(PathName)) ?? new ClientSettings();
             settings.CheckIntervalMinutes = Math.Clamp(settings.CheckIntervalMinutes, 1, 60);
+            if (settings.UndoSendSeconds is not (0 or 5 or 10 or 20 or 30)) settings.UndoSendSeconds = 10;
             if (settings.SortBy is not ("date" or "sender" or "subject")) settings.SortBy = "date";
             if (settings.ThemeMode is not ("system" or "light" or "dark")) settings.ThemeMode = "system";
             settings.AccountPaneHeight = double.IsFinite(settings.AccountPaneHeight)

@@ -18,6 +18,7 @@ public partial class ComposeWindow : Window
     private MailAccount _account;
     private string _password;
     private readonly string? _replyToId;
+    private readonly int _undoSendSeconds;
     private readonly List<string> _attachmentPaths = [];
     private MailPriority _priority = MailPriority.Normal;
     private string _activeTab = "message";
@@ -25,14 +26,21 @@ public partial class ComposeWindow : Window
     private Paragraph? _signatureParagraph;
     private Dictionary<DependencyProperty, object>? _formatPainter;
     public string? SentCopyError { get; private set; }
+    public bool WasScheduled { get; private set; }
+    public bool WasQueuedForSending { get; private set; }
+    public string? QueuedUndoSendId { get; private set; }
+    public ComposeDraft? QueuedUndoDraft { get; private set; }
 
-    public ComposeWindow(MailAccount account, string password, string to = "", string subject = "", string body = "", string? replyToId = null)
+    public ComposeWindow(MailAccount account, string password, string to = "", string subject = "", string body = "", string? replyToId = null,
+        int? undoSendSeconds = null, ScheduledMailStore? scheduledStore = null)
     {
         InitializeComponent();
         WindowTheme.Attach(this);
         _account = account;
         _password = password;
         _replyToId = replyToId;
+        _undoSendSeconds = undoSendSeconds ?? ClientSettings.Load().UndoSendSeconds;
+        _scheduledStore = scheduledStore ?? new ScheduledMailStore();
         var accounts = AccountStore.LoadAccounts().ToList();
         if (!accounts.Any(a => a.Email.Equals(account.Email, StringComparison.OrdinalIgnoreCase))) accounts.Add(account);
         foreach (MailAccount sender in accounts)
@@ -67,6 +75,9 @@ public partial class ComposeWindow : Window
         ComposeAttachButton.Content = ComposeInsertAttachment.Content = Localizer.T("attachFile");
         ComposeSignatureButton.Content = ComposeInsertSignature.Content = Localizer.T("signature");
         ComposeEditSignature.Content = Localizer.T("editSignature");
+        ComposeTemplatesButton.Content = Localizer.T("templates");
+        ScheduleSendButton.Content = Localizer.T("scheduleSend");
+        ScheduledQueueButton.Content = Localizer.T("scheduledQueue");
         ComposePasteButton.Content = Localizer.T("paste");
         ComposeCutButton.Content = ComposeRibbonIcons.Labeled("cut", Localizer.T("cut"));
         ComposeCopyButton.Content = ComposeRibbonIcons.Labeled("copy", Localizer.T("copy"));
@@ -167,6 +178,7 @@ public partial class ComposeWindow : Window
 
     private void ComposeWindow_PreviewDragOver(object sender, DragEventArgs e)
     {
+        if (_sending) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         e.Effects = DragDropEffects.Copy;
         e.Handled = true;
@@ -174,6 +186,7 @@ public partial class ComposeWindow : Window
 
     private void ComposeWindow_PreviewDrop(object sender, DragEventArgs e)
     {
+        if (_sending) { e.Handled = true; return; }
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         e.Handled = true;
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) AddAttachments(paths);
@@ -305,12 +318,14 @@ public partial class ComposeWindow : Window
     private void AddressBookButton_Click(object sender, RoutedEventArgs e)
     {
         var window = new ContactsWindow { Owner = this };
-        if (window.ShowDialog() != true || window.PickedEmail is null) return;
+        bool picked = window.ShowDialog() == true && window.PickedEmail is not null;
+        _contactsLoadedAt = DateTimeOffset.MinValue;
+        if (!picked || window.PickedEmail is not string pickedEmail) return;
         TextBox target = window.AddToCc ? CcBox : ToBox;
         string[] existing = target.Text.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (!existing.Contains(window.PickedEmail, StringComparer.OrdinalIgnoreCase))
-            target.Text = target.Text.Trim().Length == 0 ? window.PickedEmail :
-                target.Text.TrimEnd(' ', ',', ';') + "; " + window.PickedEmail;
+        if (!existing.Contains(pickedEmail, StringComparer.OrdinalIgnoreCase))
+            target.Text = target.Text.Trim().Length == 0 ? pickedEmail :
+                target.Text.TrimEnd(' ', ',', ';') + "; " + pickedEmail;
         target.Focus();
         target.CaretIndex = target.Text.Length;
     }
@@ -469,7 +484,7 @@ public partial class ComposeWindow : Window
         if (BodyEditor is not null) SpellCheck.SetIsEnabled(BodyEditor, SpellCheckBox.IsChecked == true);
     }
 
-    private async void SendButton_Click(object sender, RoutedEventArgs e)
+    private void SendButton_Click(object sender, RoutedEventArgs e)
     {
         if (_sending) return;
         StatusLabel.Foreground = (Brush)FindResource("ErrorText");
@@ -498,12 +513,27 @@ public partial class ComposeWindow : Window
             mail.Priority = _priority;
             if (ReadReceiptCheck.IsChecked == true) mail.Headers.Add("Disposition-Notification-To", _account.Email);
             foreach (string path in _attachmentPaths) mail.Attachments.Add(new Attachment(path));
-            var result = await SmtpService.SendAndSaveAsync(_account, _password, mail);
-            SentCopyError = result.CopyError;
+            int delay = _undoSendSeconds;
+            ComposeDraft? draft = delay > 0 ? CaptureDraft() : null;
+            var job = new ScheduledMail { AccountEmail = _account.Email, To = ToBox.Text,
+                Cc = CcBox.Text, Bcc = BccBox.Text, Subject = SubjectBox.Text, PlainText = plain,
+                Html = html, ReplyToId = _replyToId, Priority = _priority,
+                ReadReceipt = ReadReceiptCheck.IsChecked == true,
+                DueUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(delay, 0.1)),
+                IsUndoSend = delay > 0, UndoDelaySeconds = delay };
+            _scheduledStore.Enqueue(job, _attachmentPaths);
+            if (draft is not null)
+            {
+                QueuedUndoDraft = draft;
+                QueuedUndoSendId = job.Id;
+            }
+            WasQueuedForSending = true;
+            _sending = false;
             DialogResult = true;
         }
         catch (Exception ex)
         {
+            StatusLabel.Foreground = (Brush)FindResource("ErrorText");
             StatusLabel.Text = ex.Message;
         }
         finally
@@ -511,6 +541,38 @@ public partial class ComposeWindow : Window
             _sending = false;
             SendButton.IsEnabled = true;
         }
+    }
+
+    private ComposeDraft CaptureDraft()
+    {
+        using var stream = new MemoryStream();
+        new TextRange(BodyEditor.Document.ContentStart, BodyEditor.Document.ContentEnd)
+            .Save(stream, DataFormats.XamlPackage);
+        return new ComposeDraft { AccountEmail = _account.Email, To = ToBox.Text, Cc = CcBox.Text, Bcc = BccBox.Text,
+            Subject = SubjectBox.Text, DocumentPackage = stream.ToArray(),
+            Attachments = _attachmentPaths.ToArray(), Priority = _priority,
+            ReadReceipt = ReadReceiptCheck.IsChecked == true };
+    }
+
+    public void RestoreDraft(ComposeDraft draft)
+    {
+        ToBox.Text = draft.To;
+        CcBox.Text = draft.Cc;
+        SubjectBox.Text = draft.Subject;
+        if (draft.Bcc.Length > 0)
+        {
+            BccRow.Height = new GridLength(43);
+            BccBox.Visibility = BccLabel.Visibility = Visibility.Visible;
+            BccBox.Text = draft.Bcc;
+        }
+        using var stream = new MemoryStream(draft.DocumentPackage);
+        BodyEditor.Document.Blocks.Clear();
+        new TextRange(BodyEditor.Document.ContentStart, BodyEditor.Document.ContentEnd)
+            .Load(stream, DataFormats.XamlPackage);
+        _priority = draft.Priority;
+        ReadReceiptCheck.IsChecked = draft.ReadReceipt;
+        AddAttachments(draft.Attachments);
+        ToBox.Focus();
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;

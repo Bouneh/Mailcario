@@ -17,6 +17,307 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--contact-memory-check")
+        {
+            string path = Path.Combine(AppContext.BaseDirectory, "Mailcario-contact-check-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                var type = typeof(SmtpService).Assembly.GetType("Mailcario.ContactStore")!;
+                var messages = new[]
+                {
+                    new MailItem { From = "Alice Example <alice@example.invalid>",
+                        FromAddress = "alice@example.invalid" },
+                    new MailItem { IsSent = true, To = "Bob Example <bob@example.invalid>; self@example.invalid",
+                        Cc = "carol@example.invalid" },
+                    new MailItem { FromAddress = "no-reply@example.invalid" }
+                };
+                type.GetMethod("RememberFromMessages")!.Invoke(null,
+                    [messages, new[] { "self@example.invalid" }, path]);
+                type.GetMethod("RememberSentRecipients")!.Invoke(null,
+                    ["dave@example.invalid", "", "", new[] { "self@example.invalid" }, path]);
+                string json = File.ReadAllText(path);
+                if (!json.Contains("alice@example.invalid") || !json.Contains("Bob Example") ||
+                    !json.Contains("carol@example.invalid") || !json.Contains("dave@example.invalid") ||
+                    json.Contains("self@example.invalid") || json.Contains("no-reply@example.invalid"))
+                    throw new InvalidOperationException("Correspondents were not indexed correctly.");
+                var previewApp = new App();
+                previewApp.InitializeComponent();
+                ThemeManager.Initialize("dark");
+                var compose = new ComposeWindow(new MailAccount { Email = "self@example.invalid" },
+                    "test-password");
+                try
+                {
+                    compose.Show();
+                    var contactType = typeof(SmtpService).Assembly.GetType("Mailcario.ContactEntry")!;
+                    var contact = Activator.CreateInstance(contactType)!;
+                    contactType.GetProperty("Name")!.SetValue(contact, "Alice Example");
+                    contactType.GetProperty("Email")!.SetValue(contact, "alice@example.invalid");
+                    var suggestionList = (System.Collections.IList)Activator.CreateInstance(
+                        typeof(List<>).MakeGenericType(contactType))!;
+                    suggestionList.Add(contact);
+                    typeof(ComposeWindow).GetField("_suggestedContacts", BindingFlags.NonPublic | BindingFlags.Instance)!
+                        .SetValue(compose, suggestionList);
+                    typeof(ComposeWindow).GetField("_contactsLoadedAt", BindingFlags.NonPublic | BindingFlags.Instance)!
+                        .SetValue(compose, DateTimeOffset.UtcNow);
+                    var to = (TextBox)compose.FindName("ToBox");
+                    to.Text = "ali"; to.CaretIndex = 3;
+                    typeof(ComposeWindow).GetMethod("RefreshRecipientSuggestions", BindingFlags.NonPublic | BindingFlags.Instance)!
+                        .Invoke(compose, [to]);
+                    var popup = (System.Windows.Controls.Primitives.Popup)compose.FindName("RecipientSuggestionsPopup");
+                    bool offered = popup.IsOpen && ((ListBox)compose.FindName("RecipientSuggestions")).Items.Count == 1;
+                    typeof(ComposeWindow).GetMethod("AcceptRecipientSuggestion", BindingFlags.NonPublic | BindingFlags.Instance)!
+                        .Invoke(compose, null);
+                    if (!offered || popup.IsOpen || to.Text != "alice@example.invalid; ")
+                        throw new InvalidOperationException("Recipient completion did not insert the contact.");
+                }
+                finally { compose.Close(); ThemeManager.Shutdown(); }
+                Console.WriteLine("Correspondents indexed and recipient completion inserted the matching address.");
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+            return;
+        }
+        if (args.Length > 0 && args[0] == "--undo-send-check")
+        {
+            string root = Path.Combine(AppContext.BaseDirectory, "Mailcario-undo-check-" + Guid.NewGuid().ToString("N"));
+            var previewApp = new App();
+            previewApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            SynchronizationContext.SetSynchronizationContext(
+                new System.Windows.Threading.DispatcherSynchronizationContext());
+            var account = new MailAccount { Email = "sender@example.invalid", SmtpHost = "127.0.0.1", SmtpPort = 1 };
+            var store = new ScheduledMailStore(root);
+            var window = new ComposeWindow(account, "test-password", "recipient@example.invalid",
+                "Undo send check", "This must never be sent.", undoSendSeconds: 5, scheduledStore: store);
+            try
+            {
+                Directory.CreateDirectory(root);
+                string attachment = Path.Combine(root, "sample.txt");
+                File.WriteAllText(attachment, "attachment preserved");
+                typeof(ComposeWindow).GetMethod("AddAttachments", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(window, [new[] { attachment }]);
+                window.Show();
+                var send = (Button)window.FindName("SendButton");
+                send.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, send));
+                if (store.List().Count == 0) throw new InvalidOperationException("Compose did not queue: " +
+                    ((TextBlock)window.FindName("StatusLabel")).Text);
+                var queued = store.List().Single();
+                if (!queued.IsUndoSend || queued.State != "pending" ||
+                    window.QueuedUndoDraft is not { } draft || !store.TryCancelPending(queued.Id) ||
+                    store.List().Single().State != "cancelled")
+                    throw new InvalidOperationException("Undo send did not queue and cancel before SMTP.");
+                var restored = new ComposeWindow(account, "test-password", undoSendSeconds: 5, scheduledStore: store);
+                restored.RestoreDraft(draft);
+                bool preserved = ((TextBox)restored.FindName("ToBox")).Text == "recipient@example.invalid" &&
+                    ((TextBox)restored.FindName("SubjectBox")).Text == "Undo send check" &&
+                    ((ItemsControl)restored.FindName("AttachmentList")).Items.Count == 1 &&
+                    new TextRange(((RichTextBox)restored.FindName("BodyEditor")).Document.ContentStart,
+                        ((RichTextBox)restored.FindName("BodyEditor")).Document.ContentEnd).Text
+                        .Contains("This must never be sent.");
+                restored.Close();
+                if (!preserved) throw new InvalidOperationException("Undo send did not restore the draft.");
+                var second = new ScheduledMail { AccountEmail = account.Email, To = "recipient@example.invalid",
+                    Subject = "Status action", IsUndoSend = true, DueUtc = DateTimeOffset.UtcNow.AddSeconds(5) };
+                store.Enqueue(second, []);
+                var main = new MainWindow(null, store);
+                typeof(MainWindow).GetMethod("UpdateUndoSendStatus", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(main, null);
+                var panel = (StackPanel)main.FindName("UndoSendPanel");
+                var undo = (Button)main.FindName("UndoSendButton");
+                bool visible = panel.Visibility == Visibility.Visible && Equals(undo.Tag, second.Id);
+                undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, undo));
+                bool statusCancelled = store.List().Single(item => item.Id == second.Id).State == "cancelled" &&
+                    panel.Visibility == Visibility.Collapsed;
+                var claimed = new ScheduledMail { AccountEmail = account.Email, To = "recipient@example.invalid",
+                    Subject = "Claimed", IsUndoSend = true, DueUtc = DateTimeOffset.UtcNow.AddSeconds(1) };
+                store.Enqueue(claimed, []);
+                bool tooLate = store.ClaimDue(DateTimeOffset.UtcNow.AddMinutes(1))?.Id == claimed.Id &&
+                    !store.TryCancelPending(claimed.Id);
+                main.Close();
+                var immediate = new ComposeWindow(account, "test-password", "recipient@example.invalid",
+                    "Immediate", "Immediate body", undoSendSeconds: 0, scheduledStore: store);
+                immediate.Show();
+                var immediateButton = (Button)immediate.FindName("SendButton");
+                immediateButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, immediateButton));
+                bool immediateQueued = immediate.WasQueuedForSending &&
+                    store.List().Any(item => item.Subject == "Immediate" && !item.IsUndoSend && item.State == "pending");
+                immediate.Close();
+                if (!visible || !statusCancelled || !tooLate || !immediateQueued)
+                    throw new InvalidOperationException("Status-bar undo did not cancel the queued message.");
+                Console.WriteLine("Undo send queued, cancelled from status bar, and restored the draft before SMTP.");
+            }
+            finally
+            {
+                if (window.IsVisible) window.Close();
+                ThemeManager.Shutdown();
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+            return;
+        }
+        if (args.Length > 0 && args[0] == "--unified-preview")
+        {
+            var previewApp = new App();
+            previewApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var window = new MainWindow();
+            var accounts = new[] { new MailAccount { Email = "first@example.invalid" },
+                new MailAccount { Email = "second@example.invalid" } };
+            typeof(MainWindow).GetField("_accounts", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, accounts);
+            typeof(MainWindow).GetField("_account", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, accounts[0]);
+            typeof(MainWindow).GetField("_unifiedMode", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, true);
+            var settings = (ClientSettings)typeof(MainWindow).GetField("_settings",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            settings.ConversationView = true;
+            var now = DateTimeOffset.Now;
+            typeof(MainWindow).GetField("_messages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, new[]
+                {
+                    new MailItem { Uid = 1, AccountEmail = accounts[0].Email, FolderName = "INBOX",
+                        From = "Alice <alice@example.invalid>", FromAddress = "alice@example.invalid",
+                        Subject = "Project status", MessageId = "<original@example.invalid>",
+                        Date = now.AddMinutes(-15), IsRead = false, ShowAccountContext = true },
+                    new MailItem { Uid = 7, AccountEmail = accounts[0].Email, FolderName = "Sent",
+                        From = accounts[0].Email, To = "Alice <alice@example.invalid>",
+                        Subject = "Re: Project status", InReplyTo = "<original@example.invalid>",
+                        Date = now.AddMinutes(-2), IsRead = true, IsSent = true, ShowAccountContext = true },
+                    new MailItem { Uid = 1, AccountEmail = accounts[1].Email, FolderName = "INBOX",
+                        From = "Bob <bob@example.invalid>", FromAddress = "bob@example.invalid",
+                        Subject = "Meeting agenda", Date = now.AddHours(-1), IsRead = false,
+                        ShowAccountContext = true }
+                });
+            typeof(MainWindow).GetMethod("RefreshAccountList", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            typeof(MainWindow).GetMethod("ApplyLanguage", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            typeof(MainWindow).GetMethod("FilterMessages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            typeof(MainWindow).GetMethod("ShowInbox", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            typeof(MainWindow).GetMethod("SetAccountConnected", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, [accounts[0].Email, true, null]);
+            typeof(MainWindow).GetMethod("SetAccountConnected", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, [accounts[1].Email, true, null]);
+            ((TextBlock)window.FindName("FolderTitle")).Text = Localizer.T("allInboxes");
+            ((TextBlock)window.FindName("StatusLabel")).Text = "3 · " + Localizer.T("ready");
+            string path = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "unified-preview.png");
+            Render(window, 1320, 780, path);
+            ThemeManager.Shutdown();
+            Console.WriteLine(path);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "--unified-organization-check")
+        {
+            string root = Path.Combine(AppContext.BaseDirectory, "Mailcario-unified-check-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(root);
+                var received = new MailItem { Uid = 12, AccountEmail = "first@example.invalid", FolderName = "INBOX",
+                    MessageId = "<incoming@example.invalid>", From = "Alice <alice@example.invalid>",
+                    Subject = "Project status", IsRead = false, Date = DateTimeOffset.UtcNow.AddMinutes(-10) };
+                var sent = new MailItem { Uid = 12, AccountEmail = "first@example.invalid", FolderName = "Sent",
+                    MessageId = "<reply@example.invalid>", InReplyTo = "<incoming@example.invalid>",
+                    From = "Me <first@example.invalid>", To = "Alice <alice@example.invalid>",
+                    Subject = "Re: Project status", IsSent = true, IsRead = true, Date = DateTimeOffset.UtcNow };
+                var other = new MailItem { Uid = 12, AccountEmail = "second@example.invalid", FolderName = "INBOX",
+                    Subject = "Project status", IsRead = false, Date = DateTimeOffset.UtcNow };
+                ConversationSupport.AssignGroups([received, sent, other]);
+                bool passed = Equals(received.ConversationGroup, sent.ConversationGroup) &&
+                    !Equals(received.ConversationGroup, other.ConversationGroup) &&
+                    received.ConversationGroup!.ToString().Contains("● 1") &&
+                    sent.Correspondent.Contains("alice@example.invalid");
+                received.IsRead = true;
+                passed &= !received.ConversationGroup!.DisplayName.Contains('●');
+                received.IsRead = false;
+                passed &= ConversationSupport.RelatedSent([other], [sent]).Count == 0;
+                string organizationPath = Path.Combine(root, "organization.json");
+                var organization = new MailOrganizationStore(organizationPath);
+                organization.SetCategory(received, "Important", "#B75050");
+                organization.SetSnooze(received, DateTimeOffset.UtcNow.AddHours(1));
+                var reopened = new MailOrganizationStore(organizationPath);
+                passed &= reopened.Get(received).CategoryName == "Important" &&
+                    reopened.Get(received).SnoozedUntil > DateTimeOffset.UtcNow;
+                var moved = new MailItem { AccountEmail = received.AccountEmail, FolderName = "Archive",
+                    Uid = 80, MessageId = received.MessageId };
+                passed &= reopened.Get(moved).CategoryName == "Important";
+                string templatePath = Path.Combine(root, "templates.json");
+                var templates = new MailTemplateStore(templatePath);
+                templates.Save(new MailTemplate { Name = "Answer", Subject = "Re: Test", Body = "Hello" });
+                passed &= new MailTemplateStore(templatePath).List().Single().Body == "Hello";
+                templates.Delete(templates.List().Single().Id);
+                passed &= templates.List().Count == 0;
+                string attachment = Path.Combine(root, "sample.txt");
+                File.WriteAllText(attachment, "scheduled attachment");
+                var queue = new ScheduledMailStore(Path.Combine(root, "queue"));
+                var job = new ScheduledMail { AccountEmail = "first@example.invalid", To = "alice@example.invalid",
+                    Subject = "Later", DueUtc = DateTimeOffset.UtcNow.AddHours(1) };
+                queue.Enqueue(job, [attachment]);
+                passed &= queue.ClaimDue(DateTimeOffset.UtcNow) is null &&
+                    queue.List().Single().AttachmentFiles.Count == 1 &&
+                    File.Exists(queue.List().Single().AttachmentFiles.Single());
+                using (var scheduledMessage = ScheduledMailStore.BuildMessage(
+                           new MailAccount { Email = job.AccountEmail }, queue.List().Single()))
+                    passed &= scheduledMessage.Attachments.Single().Name == "sample.txt";
+                var claimed = queue.ClaimDue(DateTimeOffset.UtcNow.AddHours(2));
+                passed &= claimed?.Id == job.Id && queue.ClaimDue(DateTimeOffset.UtcNow.AddHours(2)) is null;
+                var recovered = new ScheduledMailStore(Path.Combine(root, "queue"));
+                recovered.RecoverInterrupted();
+                passed &= recovered.List().Single().State == "interrupted";
+                recovered.Retry(job.Id);
+                passed &= recovered.ClaimDue(DateTimeOffset.UtcNow.AddHours(2))?.Id == job.Id;
+                recovered.SetState(job.Id, "sent");
+                passed &= recovered.List().Single().State == "sent" &&
+                    !Directory.Exists(Path.Combine(root, "queue", job.Id));
+                var checkApp = new App();
+                checkApp.InitializeComponent();
+                ThemeManager.Initialize("dark");
+                var window = new MainWindow();
+                typeof(MainWindow).GetField("_accounts", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(window, new[] { new MailAccount { Email = received.AccountEmail },
+                        new MailAccount { Email = other.AccountEmail } });
+                typeof(MainWindow).GetField("_messages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(window, new[] { received, sent, other });
+                typeof(MainWindow).GetField("_unifiedMode", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(window, true);
+                var settings = (ClientSettings)typeof(MainWindow).GetField("_settings",
+                    BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+                settings.ConversationView = true;
+                typeof(MainWindow).GetMethod("FilterMessages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(window, null);
+                var unifiedList = (ListBox)window.FindName("MessageList");
+                passed &= unifiedList.Items.Count == 3;
+                unifiedList.SelectedItem = received;
+                typeof(MainWindow).GetMethod("FilterMessages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(window, null);
+                passed &= ReferenceEquals(unifiedList.SelectedItem, received);
+                var inboxCursors = (Dictionary<string, int>)typeof(MainWindow).GetField("_unifiedInboxCursors",
+                    BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+                var sentCursors = (Dictionary<(string Email, string Folder), int>)typeof(MainWindow)
+                    .GetField("_unifiedSentCursors", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .GetValue(window)!;
+                inboxCursors[received.AccountEmail] = 0;
+                sentCursors[(received.AccountEmail, "Sent")] = 30;
+                typeof(MainWindow).GetMethod("UpdatePaginationUi", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(window, null);
+                passed &= ((Button)window.FindName("LoadOlderButton")).Visibility == Visibility.Visible;
+                passed &= ((MailAccount)typeof(MainWindow).GetMethod("AccountFor",
+                    BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [other])!).Email ==
+                    other.AccountEmail;
+                window.Close();
+                ThemeManager.Shutdown();
+                Console.WriteLine(passed ? "Unified conversations and organization check passed" :
+                    "Unified conversations and organization check failed");
+                if (!passed) Environment.ExitCode = 1;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Unified conversations and organization check failed: " + ex);
+                Environment.ExitCode = 1;
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+            return;
+        }
         if (args.Length > 0 && args[0] == "--local-folder-check")
         {
             string root = Path.Combine(AppContext.BaseDirectory, "Mailcario-local-check-" + Guid.NewGuid().ToString("N"));
@@ -495,9 +796,29 @@ internal static class Program
         {
             var previewApp = new App();
             previewApp.InitializeComponent();
-            ThemeManager.Initialize("dark");
+            ThemeManager.Initialize(args.Length > 2 && args[2] == "light" ? "light" : "dark");
             var window = (Window)Activator.CreateInstance(
                 typeof(SmtpService).Assembly.GetType("Mailcario.ContactsWindow")!)!;
+            var contacts = (System.Collections.IList)window.GetType().GetField("_contacts",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            contacts.Clear();
+            var contactType = typeof(SmtpService).Assembly.GetType("Mailcario.ContactEntry")!;
+            foreach ((string name, string email) in new[]
+            {
+                ("Alice Martin", "alice@example.invalid"),
+                ("Bob Dupont", "bob@example.invalid"),
+                ("Atelier du Nord", "contact@atelier.example.invalid")
+            })
+            {
+                var contact = Activator.CreateInstance(contactType)!;
+                contactType.GetProperty("Name")!.SetValue(contact, name);
+                contactType.GetProperty("Email")!.SetValue(contact, email);
+                contacts.Add(contact);
+            }
+            window.GetType().GetMethod("RefreshList", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            ((ListBox)window.GetType().GetField("_list", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(window)!).SelectedIndex = 1;
             Render(window, 720, 490, args.Length > 1 ? args[1] :
                 Path.Combine(Path.GetTempPath(), "Mailcario-contacts-preview.png"));
             ThemeManager.Shutdown();

@@ -50,6 +50,7 @@ public partial class App : Application
         var window = new MainWindow();
         MainWindow = window;
         window.Show();
+        window.StartScheduledSending();
         if (_activationPending) ActivateExistingWindow();
     }
 

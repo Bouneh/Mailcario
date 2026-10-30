@@ -35,6 +35,18 @@ Mailcario is a **local Windows email client**. You do not need to host a server 
 
 Each folder loads recent messages first, then loads older messages as you scroll or select **Load older messages**. Search results also continue beyond the first page.
 
+### All accounts, one view
+
+Choose **All inboxes** in Favorites to read mail from every connected account together. The search field in that view searches all selectable server folders on every account, plus mail copied to local folders. Results keep their account and folder labels, and older server results load as you scroll. Turn on **Conversations** to group related received messages with your sent replies; each message retains its own read or unread state.
+
+![Unified inbox and conversations with fictional accounts](docs/images/unified-dark.png)
+
+Right-click a message to assign a colored category, snooze it for an hour, until tomorrow, or for a week, or use a quick action such as **Mark read and archive**. Snoozed messages reappear while Mailcario is running when their time arrives. Keyboard shortcuts: `Ctrl+N` new message, `Ctrl+E` search, `Ctrl+R` reply, `Ctrl+Shift+R` reply all, `Ctrl+F` forward, `Ctrl+Q` mark read, `Ctrl+U` mark unread, and `Delete` move a selected message to Trash.
+
+The compose ribbon includes **Templates** to save and reuse a subject and formatted body. After you click **Send**, the compose window closes and an **Undo** button appears in the main window's bottom-left status bar for 10 seconds by default. Undo cancels the queued send and reopens the draft. You can choose 0, 5, 10, 20, or 30 seconds in **Settings**. Once SMTP sending starts, the message cannot be recalled. **Options → Schedule send** stores the draft and a private copy of its attachments on this PC. Mailcario sends it when it is running at or after the chosen time. If the app or PC is off, sending waits until Mailcario starts again. **File → Scheduled messages** lets you review or cancel pending mail and manually retry an interrupted or failed send. Scheduled drafts, templates and categories are stored under `%LOCALAPPDATA%\Mailcario`; they are not synced to other devices.
+
+Mailcario adds correspondents from messages it loads and from successful sends to the local address book. It also scans older mail headers in the background, folder by folder, to fill in existing correspondents without downloading message bodies or attachments. While composing, type a name or email address in **To**, **Cc**, or **Bcc** to see suggestions; use the arrow keys and Enter, or click a suggestion.
+
 Right-click any mail folder to enable or disable notifications for that folder. A message moved by a Mailcario rule can alert you from its destination folder, and clicking the alert opens that folder. The general notification, sound and preview options remain in **Settings**.
 
 ### Local folders

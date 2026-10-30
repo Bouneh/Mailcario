@@ -18,7 +18,7 @@ public partial class MainWindow
             MessageList.SelectedItems.Clear();
             row.IsSelected = true;
         }
-        string sourceFolder = _folder;
+        string sourceFolder = FolderFor(mail);
         var menu = new ContextMenu
         {
             Style = (Style)Application.Current.FindResource("MailMessageContextMenuStyle")
@@ -32,6 +32,7 @@ public partial class MainWindow
             AddAction(menu, "reply", async () => await ComposeReplyAsync(mail, false));
             AddAction(menu, "forward", async () => await ComposeForwardAsync(mail));
             AddAction(menu, mail.IsRead ? "markUnread" : "markRead", () => SetLocalRead(mail, !mail.IsRead));
+            AddOrganizationMenu(menu, mail);
             menu.Items.Add(NewSeparator());
             AddAction(menu, "deleteLocalMessage", () => DeleteLocalMessage(mail));
             menu.PlacementTarget = row;
@@ -48,17 +49,34 @@ public partial class MainWindow
         AddAction(menu, "forward", async () => await ComposeForwardAsync(mail));
         menu.Items.Add(NewSeparator());
         AddAction(menu, mail.IsRead ? "markUnread" : "markRead",
-            async () => await RunImapActionAsync(s => s.SetReadAsync(sourceFolder, mail.Uid, !mail.IsRead)));
+            async () => await SetMessageReadAsync(mail, !mail.IsRead));
         var follow = AddSubmenu(menu, "followUp");
         AddAction(follow, mail.IsFlagged ? "clearFollowUp" : "followUp",
-            async () => await RunImapActionAsync(s => s.SetFlaggedAsync(sourceFolder, mail.Uid, !mail.IsFlagged)));
+            async () => await RunMessageActionAsync(mail, s => s.SetFlaggedAsync(sourceFolder, mail.Uid, !mail.IsFlagged)));
         var similar = AddSubmenu(menu, "findSimilar");
         AddAction(similar, "fromSender", async () => { SearchBox.Text = mail.FromAddress; await RunSearchAsync(); });
         AddAction(similar, "sameSubject", async () => { SearchBox.Text = mail.Subject; await RunSearchAsync(); });
         var quick = AddSubmenu(menu, "quickActions");
-        AddAction(quick, "markRead", async () => await RunImapActionAsync(s => s.SetReadAsync(sourceFolder, mail.Uid, true)));
+        AddAction(quick, "markRead", async () => await SetMessageReadAsync(mail, true));
+        AddAction(quick, "markReadArchive", async () =>
+        {
+            await SetMessageReadAsync(mail, true);
+            await MoveToSpecialFolderAsync(mail, "archive");
+        });
         var archive = FindSpecialFolder("archive");
-        if (archive is not null) AddAction(quick, "archive", async () => await MoveMessageAsync(mail, sourceFolder, archive.ServerName));
+        AddAction(quick, "archive", async () => await MoveToSpecialFolderAsync(mail, "archive"));
+        if (_unifiedMode || (mail.AccountEmail.Length > 0 &&
+            !mail.AccountEmail.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase)))
+        {
+            AddOrganizationMenu(menu, mail);
+            AddAction(menu, "delete", async () => await MoveToSpecialFolderAsync(mail, "trash"));
+            AddAction(menu, "archive", async () => await MoveToSpecialFolderAsync(mail, "archive"));
+            menu.PlacementTarget = row;
+            menu.Placement = PlacementMode.MousePoint;
+            menu.IsOpen = true;
+            e.Handled = true;
+            return;
+        }
         var rules = AddSubmenu(menu, "rules");
         AddAction(rules, "createRule", async () => await OpenRulesWindowAsync(mail));
         AddAction(rules, "manageRules", async () => await OpenRulesWindowAsync());
@@ -73,7 +91,9 @@ public partial class MainWindow
         move.IsEnabled = move.Items.Count > 0;
         var local = AddSubmenu(menu, "copyToLocalFolder");
         var account = _account;
-        var selected = MessageList.SelectedItems.OfType<MailItem>().Where(item => item.LocalId.Length == 0).ToList();
+        var selected = MessageList.SelectedItems.OfType<MailItem>().Where(item => item.LocalId.Length == 0 &&
+            item.AccountEmail.Equals(mail.AccountEmail, StringComparison.OrdinalIgnoreCase) &&
+            FolderFor(item) == sourceFolder).ToList();
         if (selected.Count == 0) selected.Add(mail);
         foreach (var target in _localMailStore.ListFolders())
         {
@@ -98,6 +118,7 @@ public partial class MainWindow
             catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
         });
         menu.Items.Add(NewSeparator());
+        AddOrganizationMenu(menu, mail);
         AddUnavailable(menu, "ignore");
         var junk = FindSpecialFolder("junk");
         var junkMenu = AddSubmenu(menu, "junk");
@@ -153,6 +174,11 @@ public partial class MainWindow
     {
         Header = label ?? Localizer.T(key),
         Icon = MenuIcon(key),
+        InputGestureText = key switch
+        {
+            "reply" => "Ctrl+R", "replyAll" => "Ctrl+Shift+R", "forward" => "Ctrl+F",
+            "markRead" => "Ctrl+Q", "markUnread" => "Ctrl+U", "delete" => "Del", _ => ""
+        },
         Style = (Style)Application.Current.FindResource("MailMessageMenuItemStyle")
     };
 
@@ -181,6 +207,10 @@ public partial class MainWindow
             "restore" => "M4,9 A7,7 0 1 1 5,15 M4,4 L4,9 9,9",
             "delete" or "deleteLocalMessage" => "M4,5 L16,5 M6,5 L7,18 13,18 14,5 M8,3 L12,3 M9,8 L9,15 M11,8 L11,15",
             "archive" => "M2,4 L18,4 18,8 2,8 Z M4,8 L4,17 16,17 16,8 M8,11 L12,11",
+            "markReadArchive" => "M2,4 L18,4 18,8 2,8 Z M4,8 L4,17 16,17 16,8 M6,12 L9,15 14,10",
+            "categories" or "customCategory" or "clearCategory" => "M2,3 L11,3 18,10 10,18 2,10 Z M6,7 L6.1,7.1",
+            "snooze" or "snoozeHour" or "snoozeTomorrow" or "snoozeWeek" or "snoozeCustom" or "clearSnooze" =>
+                "M10,2 A8,8 0 1 1 9.9,2 M10,5 L10,10 14,12",
             "enableFolderNotifications" or "disableFolderNotifications" => "M4,12 L4,8 C4,4 12,4 12,8 L12,12 14,14 2,14 Z M7,15 C7,17 9,17 9,15",
             _ => "M3,3 L17,3 17,17 3,17 Z"
         };
@@ -189,7 +219,7 @@ public partial class MainWindow
             "reply" or "replyAll" => "IconReply",
             "forward" => "IconForward",
             "delete" or "deleteLocalMessage" or "junk" or "moveToJunk" or "blockSender" => "IconDanger",
-            "archive" => "IconSync",
+            "archive" or "markReadArchive" or "snooze" or "snoozeHour" or "snoozeTomorrow" or "snoozeWeek" or "snoozeCustom" => "IconSync",
             "move" or "copyToLocalFolder" or "newLocalFolder" or "rules" or "createRule" or "manageRules" => "IconFolder",
             "enableFolderNotifications" or "disableFolderNotifications" => "IconSync",
             _ => "IconNeutral"
@@ -222,7 +252,7 @@ public partial class MainWindow
     private bool IsCurrentFolder(string kind) => FindSpecialFolder(kind)?.ServerName == _folder;
 
     private Task MoveMessageAsync(MailItem mail, string source, string target) =>
-        RunImapActionAsync(s => s.MoveAsync(source, mail.Uid, target));
+        RunMessageActionAsync(mail, s => s.MoveAsync(source, mail.Uid, target));
 
     private async Task OpenRulesWindowAsync(MailItem? mail = null, string? preferredTarget = null)
     {
@@ -251,9 +281,11 @@ public partial class MainWindow
     {
         if (mail == _selected && _selectedContent is not null) return _selectedContent.PlainText;
         if (mail.LocalId.Length > 0) return (await Task.Run(() => _localMailStore.LoadMessage(mail.LocalId))).PlainText;
-        if (_account is null || _password is null) return "";
-        await using var session = await ImapSession.ConnectAsync(_account, _password);
-        return (await session.LoadMessageAsync(_folder, mail.Uid)).PlainText;
+        MailAccount? account = AccountFor(mail);
+        string? password = account is null ? null : AccountStore.LoadPassword(account.Email);
+        if (account is null || password is null) return "";
+        await using var session = await ImapSession.ConnectAsync(account, password);
+        return (await session.LoadMessageAsync(FolderFor(mail), mail.Uid)).PlainText;
     }
 
     private async Task CopyMessageAsync(MailItem mail)
@@ -270,24 +302,25 @@ public partial class MainWindow
     {
         try
         {
-            string recipients = mail.FromAddress;
+            string recipients = mail.IsSent ? mail.To : mail.FromAddress;
             if (all)
             {
-                var addresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { mail.FromAddress };
+                var addresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (!mail.IsSent && mail.FromAddress.Length > 0) addresses.Add(mail.FromAddress);
                 try
                 {
                     var collection = new MailAddressCollection();
                     collection.Add(mail.To);
                     if (!string.IsNullOrWhiteSpace(mail.Cc)) collection.Add(mail.Cc);
                     foreach (MailAddress address in collection)
-                        if (!address.Address.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase)) addresses.Add(address.Address);
+                        if (!address.Address.Equals(AccountFor(mail)?.Email, StringComparison.OrdinalIgnoreCase)) addresses.Add(address.Address);
                 }
                 catch (FormatException) { }
                 recipients = string.Join("; ", addresses);
             }
             string subject = mail.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase)
                 ? mail.Subject : Localizer.T("replyPrefix") + mail.Subject;
-            OpenCompose(recipients, subject, "\n\n-----\n" + mail.From + "\n" + await MessagePlainTextAsync(mail), mail.MessageId);
+            OpenCompose(recipients, subject, "\n\n-----\n" + mail.From + "\n" + await MessagePlainTextAsync(mail), mail.MessageId, AccountFor(mail));
         }
         catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
     }
@@ -298,7 +331,7 @@ public partial class MainWindow
         {
             string subject = mail.Subject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase)
                 ? mail.Subject : Localizer.T("forwardPrefix") + mail.Subject;
-            OpenCompose(subject: subject, body: "\n\n-----\n" + mail.From + "\n" + await MessagePlainTextAsync(mail));
+            OpenCompose(subject: subject, body: "\n\n-----\n" + mail.From + "\n" + await MessagePlainTextAsync(mail), sourceAccount: AccountFor(mail));
         }
         catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
     }

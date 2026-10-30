@@ -48,13 +48,14 @@ public partial class MainWindow
             _dragSelection = [];
             return;
         }
-        if (_dragCandidate is not { } candidate || _localFolderId is not null || _offlineMode ||
-            _account is null || _password is null) return;
+        if (_dragCandidate is not { } candidate || _localFolderId is not null || _offlineMode) return;
+        MailAccount? account = AccountFor(candidate);
+        if (account is null || AccountStore.LoadPassword(account.Email) is null) return;
         Point position = e.GetPosition(MessageList);
         if (Math.Abs(position.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(position.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         _dragCandidate = null;
-        var payload = LocalMailDragPayload.Create(_account, _folder, candidate,
+        var payload = LocalMailDragPayload.Create(account, FolderFor(candidate), candidate,
             _dragSelection.Count > 1 ? _dragSelection : MessageList.SelectedItems.OfType<MailItem>());
         _dragSelection = [];
         if (payload is null) return;
@@ -94,7 +95,7 @@ public partial class MainWindow
     {
         var payload = DragPayload(e);
         e.Effects = payload is not null && LocalDropFolder(e.OriginalSource as DependencyObject) is not null &&
-            !_offlineMode && _account == payload.Account && _password is not null
+            !_offlineMode && AccountStore.LoadPassword(payload.Account.Email) is not null
             ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
@@ -103,7 +104,8 @@ public partial class MainWindow
     {
         var payload = DragPayload(e);
         var target = LocalDropFolder(e.OriginalSource as DependencyObject);
-        if (payload is null || target is null || _offlineMode || _account != payload.Account || _password is null)
+        if (payload is null || target is null || _offlineMode ||
+            AccountStore.LoadPassword(payload.Account.Email) is null)
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -189,6 +191,9 @@ public partial class MainWindow
 
     private void NavigateToLocalFolder(string folderId)
     {
+        _unifiedMode = false;
+        SearchHint.Text = Localizer.T("search");
+        SearchBox.ToolTip = SearchButton.ToolTip = Localizer.T("searchHelp");
         _mailLoadCts?.Cancel();
         _olderLoadCts?.Cancel();
         _searchCts?.Cancel();
@@ -229,13 +234,13 @@ public partial class MainWindow
     private async Task CopyToLocalFolderAsync(IReadOnlyList<MailItem> messages, string sourceFolder,
         MailAccount sourceAccount, string folderId)
     {
-        if (_offlineMode || _password is null)
+        string? password = AccountStore.LoadPassword(sourceAccount.Email);
+        if (_offlineMode || password is null)
         {
             StatusLabel.Text = Localizer.T("offlineStatus");
             return;
         }
         int copied = 0;
-        string password = _password;
         try
         {
             StatusLabel.Text = Localizer.T("copyingLocalMessages");
@@ -266,7 +271,13 @@ public partial class MainWindow
         try
         {
             _localMailStore.DeleteMessage(message.LocalId);
-            RefreshLocalMessages();
+            if (_localFolderId is not null) RefreshLocalMessages();
+            else
+            {
+                _messages = _messages.Where(item => item.LocalId != message.LocalId).ToList();
+                _searchResults = _searchResults?.Where(item => item.LocalId != message.LocalId).ToList();
+                FilterMessages();
+            }
         }
         catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
     }
@@ -292,7 +303,10 @@ public sealed record LocalMailDragPayload(MailAccount Account, string SourceFold
         MailItem candidate, IEnumerable<MailItem> selected)
     {
         if (candidate.LocalId.Length > 0) return null;
-        var messages = selected.Where(item => item.LocalId.Length == 0).Distinct().ToList();
+        var messages = selected.Where(item => item.LocalId.Length == 0 &&
+            (item.AccountEmail.Length == 0 || item.AccountEmail.Equals(account.Email, StringComparison.OrdinalIgnoreCase)) &&
+            (item.FolderName.Length == 0 || item.FolderName.Equals(sourceFolder, StringComparison.OrdinalIgnoreCase)))
+            .Distinct().ToList();
         return messages.Contains(candidate) ? new LocalMailDragPayload(account, sourceFolder, messages) : null;
     }
 }

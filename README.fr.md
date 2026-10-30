@@ -35,6 +35,18 @@ Mailcario est un **client de messagerie local pour Windows**. Aucun serveur pers
 
 Chaque dossier charge d’abord les messages récents, puis les plus anciens quand vous faites défiler la liste ou cliquez sur **Charger les messages précédents**. Les résultats de recherche continuent aussi au-delà de la première page.
 
+### Tous les comptes dans une seule vue
+
+Choisissez **Toutes les boîtes** dans les Favoris pour lire ensemble les messages de vos comptes connectés. La recherche de cette vue interroge tous les dossiers sélectionnables de chaque compte, ainsi que les copies enregistrées dans les dossiers locaux. Chaque résultat indique son compte et son dossier ; les résultats serveur plus anciens se chargent pendant le défilement. Activez **Conversations** pour réunir les messages reçus et les réponses envoyées, tout en gardant l’état lu ou non lu de chaque message.
+
+![Boîte unifiée et conversations avec des comptes fictifs](docs/images/unified-dark.png)
+
+Un clic droit sur un message permet de lui attribuer une catégorie colorée, de le reporter d’une heure, jusqu’au lendemain ou d’une semaine, ou d’utiliser une action rapide comme **Marquer comme lu et archiver**. Le message reporté réapparaît à l’heure prévue pendant que Mailcario fonctionne. Raccourcis : `Ctrl+N` nouveau message, `Ctrl+E` rechercher, `Ctrl+R` répondre, `Ctrl+Maj+R` répondre à tous, `Ctrl+F` transférer, `Ctrl+Q` marquer comme lu, `Ctrl+U` marquer comme non lu et `Suppr` déplacer le message sélectionné vers la corbeille.
+
+Le ruban de rédaction propose **Modèles** pour enregistrer et réutiliser un objet et un corps mis en forme. Après un clic sur **Envoyer**, la fenêtre de rédaction se ferme et un bouton **Annuler** apparaît en bas à gauche de la fenêtre principale pendant 10 secondes par défaut. L’annulation interrompt l’envoi en attente et rouvre le brouillon. Le délai se règle dans **Paramètres** : 0, 5, 10, 20 ou 30 secondes. Dès que l’envoi SMTP commence, le message ne peut plus être rappelé. **Options → Envoi différé** conserve le brouillon et une copie privée de ses pièces jointes sur ce PC. Mailcario l’envoie à l’heure choisie ou dès qu’il fonctionne de nouveau. Si l’application ou le PC est arrêté, l’envoi attend le prochain démarrage. **Fichier → Envois programmés** permet de consulter ou d’annuler les messages en attente et de relancer manuellement un envoi interrompu ou échoué. Les brouillons programmés, modèles et catégories sont enregistrés sous `%LOCALAPPDATA%\Mailcario` et ne sont pas synchronisés avec d’autres appareils.
+
+Mailcario ajoute au carnet d’adresses local les correspondants des messages qu’il charge et des envois réussis. Il parcourt aussi progressivement les en-têtes des anciens mails, dossier par dossier, sans télécharger les corps ni les pièces jointes. Dans les champs **À**, **Cc** et **Cci**, saisissez un nom ou une adresse pour voir les suggestions ; choisissez avec les flèches et Entrée, ou cliquez sur une suggestion.
+
 Un clic droit sur un dossier permet d’activer ou de désactiver ses notifications. Un message déplacé par une règle Mailcario peut ainsi déclencher une alerte depuis son dossier de destination ; un clic sur l’alerte ouvre ce dossier. Les options générales de notification, de son et d’aperçu restent dans **Paramètres**.
 
 ### Dossiers locaux

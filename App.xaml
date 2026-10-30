@@ -286,6 +286,35 @@
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
     </Style>
+    <DataTemplate x:Key="ContactListItemTemplate">
+      <TextBlock Text="{Binding DisplayLabel}" Foreground="{DynamicResource Ink}"
+                 FontSize="13" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                 ToolTip="{Binding DisplayLabel}" VerticalAlignment="Center"/>
+    </DataTemplate>
+    <Style x:Key="ContactListItemStyle" TargetType="ListBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="ContactRow" Background="Transparent" BorderBrush="Transparent"
+                    BorderThickness="1" CornerRadius="4" Margin="2,1" Padding="9,6">
+              <ContentPresenter ContentSource="Content" HorizontalAlignment="Stretch"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="ContactRow" Property="Background" Value="{DynamicResource Hover}"/>
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="ContactRow" Property="Background" Value="{DynamicResource Selected}"/>
+                <Setter TargetName="ContactRow" Property="BorderBrush" Value="{DynamicResource SelectedStroke}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style TargetType="CheckBox">
       <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
       <Setter Property="FontFamily" Value="Segoe UI"/>

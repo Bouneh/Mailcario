@@ -157,6 +157,7 @@ public partial class MainWindow
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex) { StatusLabel.Text = Localizer.T("rules") + ": " + ex.Message; }
                     InboxSnapshot snapshot = await session.GetInboxSnapshotAsync(_monitorCancellation.Token);
+                    if (snapshot.Latest is not null) StampMessages([snapshot.Latest], account.Email, "INBOX", showContext: _unifiedMode);
                     SetAccountConnected(account.Email, true);
                     SetInboxUnreadCount(account.Email, snapshot.UnreadCount);
                     if (ObserveInbox(account.Email, snapshot.UidValidity, snapshot.Latest) && snapshot.Latest is not null)
@@ -252,7 +253,8 @@ public partial class MainWindow
     private MailItem? ObserveLoadedInbox()
     {
         if (!_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase) || _account is null) return null;
-        MailItem? latest = _messages.MaxBy(m => m.Uid);
+        MailItem? latest = _messages.Where(m => m.FolderName.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+            .MaxBy(m => m.Uid);
         return ObserveInbox(_account.Email, 0, latest) ? latest : null;
     }
 
