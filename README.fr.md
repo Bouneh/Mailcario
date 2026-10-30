@@ -35,6 +35,10 @@ Mailcario est un **client de messagerie local pour Windows**. Aucun serveur pers
 
 Chaque dossier charge d’abord les messages récents, puis les plus anciens quand vous faites défiler la liste ou cliquez sur **Charger les messages précédents**. Les résultats de recherche continuent aussi au-delà de la première page.
 
+Un clic droit sur un dossier permet d’activer ou de désactiver ses notifications. Un message déplacé par une règle Mailcario peut ainsi déclencher une alerte depuis son dossier de destination ; un clic sur l’alerte ouvre ce dossier. Les options générales de notification, de son et d’aperçu restent dans **Paramètres**.
+
+Les pièces jointes reçues apparaissent dans le volet de lecture. Vous pouvez les télécharger, prévisualiser les PDF, images et fichiers texte dans Mailcario, et imprimer ces formats. Les autres types de fichiers peuvent être enregistrés puis ouverts avec une application compatible.
+
 ### Aperçu
 
 | Rédaction | Import de comptes Thunderbird |

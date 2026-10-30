@@ -38,6 +38,8 @@ public sealed class ClientSettings
             settings.AccountPaneHeight = double.IsFinite(settings.AccountPaneHeight)
                 ? Math.Clamp(settings.AccountPaneHeight, 94, 420) : 166;
             settings.FolderViews ??= new(StringComparer.OrdinalIgnoreCase);
+            foreach (FolderViewState view in settings.FolderViews.Values)
+                view.NotificationFolders ??= ["INBOX"];
             settings.AutoLoadImages = settings.AutoLoadImages is null
                 ? new(StringComparer.OrdinalIgnoreCase)
                 : new(settings.AutoLoadImages, StringComparer.OrdinalIgnoreCase);
@@ -66,4 +68,5 @@ public sealed class FolderViewState
     public bool AccountExpanded { get; set; } = true;
     public List<string> HiddenFolders { get; set; } = [];
     public List<string> CollapsedFolders { get; set; } = [];
+    public List<string> NotificationFolders { get; set; } = ["INBOX"];
 }

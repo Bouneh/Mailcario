@@ -162,9 +162,13 @@ public sealed class ImapSession : IAsyncDisposable
         return items;
     }
 
-    public async Task<InboxSnapshot> GetInboxSnapshotAsync(CancellationToken token = default)
+    public Task<InboxSnapshot> GetInboxSnapshotAsync(CancellationToken token = default) =>
+        GetFolderSnapshotAsync("INBOX", true, token);
+
+    public async Task<InboxSnapshot> GetFolderSnapshotAsync(string folder, bool countUnread = false,
+        CancellationToken token = default)
     {
-        var response = await CommandAsync("SELECT \"INBOX\"", token);
+        var response = await CommandAsync($"SELECT {Quote(folder)}", token);
         uint validity = 0;
         int total = 0;
         foreach (var part in response.Parts)
@@ -175,7 +179,7 @@ public sealed class ImapSession : IAsyncDisposable
             if (existsMatch.Success) int.TryParse(existsMatch.Groups[1].Value, out total);
         }
         MailItem? latest = total > 0 ? await FetchSummaryAsync($"FETCH {total}", token) : null;
-        int unreadCount = await CountUnreadInSelectedFolderAsync(token);
+        int unreadCount = countUnread ? await CountUnreadInSelectedFolderAsync(token) : 0;
         return new InboxSnapshot(validity, latest, unreadCount);
     }
 
@@ -348,10 +352,10 @@ public sealed class ImapSession : IAsyncDisposable
     public async Task<MailContent> LoadMessageAsync(string folder, uint uid, CancellationToken token = default)
     {
         await SelectAsync(folder, token);
-        var response = await CommandAsync($"UID FETCH {uid} (BODY.PEEK[])", token, 20_000_000);
+        var response = await CommandAsync($"UID FETCH {uid} (BODY.PEEK[])", token, 50_000_000);
         byte[]? literal = response.Parts.FirstOrDefault(p => p.Literal is not null)?.Literal;
         if (literal is null) throw new IOException("The message is no longer available.");
-        return MimeReader.ReadMessage(literal);
+        return await Task.Run(() => MimeReader.ReadMessage(literal), token);
     }
 
     public async Task<string> LoadMessagePreviewAsync(string folder, uint uid, CancellationToken token = default)

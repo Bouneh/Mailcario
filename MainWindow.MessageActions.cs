@@ -134,6 +134,7 @@ public partial class MainWindow
             "restore" => "M4,9 A7,7 0 1 1 5,15 M4,4 L4,9 9,9",
             "delete" => "M4,5 L16,5 M6,5 L7,18 13,18 14,5 M8,3 L12,3 M9,8 L9,15 M11,8 L11,15",
             "archive" => "M2,4 L18,4 18,8 2,8 Z M4,8 L4,17 16,17 16,8 M8,11 L12,11",
+            "enableFolderNotifications" or "disableFolderNotifications" => "M4,12 L4,8 C4,4 12,4 12,8 L12,12 14,14 2,14 Z M7,15 C7,17 9,17 9,15",
             _ => "M3,3 L17,3 17,17 3,17 Z"
         };
         string brush = key switch
@@ -143,6 +144,7 @@ public partial class MainWindow
             "delete" or "junk" or "moveToJunk" or "blockSender" => "IconDanger",
             "archive" => "IconSync",
             "move" or "rules" or "createRule" or "manageRules" => "IconFolder",
+            "enableFolderNotifications" or "disableFolderNotifications" => "IconSync",
             _ => "IconNeutral"
         };
         var icon = new System.Windows.Shapes.Path

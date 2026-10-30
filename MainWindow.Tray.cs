@@ -75,10 +75,10 @@ public partial class MainWindow
         UpdateTrayLanguage();
     }
 
-    private void ShowNewMailBalloon(string account, string detail)
+    private void ShowNewMailBalloon(string folderName, string detail)
     {
         if (_trayIcon is null) return;
-        string title = Localizer.T("newMailNotification") + " · " + account;
+        string title = Localizer.T("newMailNotification") + " · " + folderName;
         _trayIcon.ShowBalloonTip(8000, title.Length > 63 ? title[..63] : title,
             detail.Length > 230 ? detail[..227] + "…" : detail, Forms.ToolTipIcon.None);
     }

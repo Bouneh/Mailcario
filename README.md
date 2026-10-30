@@ -35,6 +35,10 @@ Mailcario is a **local Windows email client**. You do not need to host a server 
 
 Each folder loads recent messages first, then loads older messages as you scroll or select **Load older messages**. Search results also continue beyond the first page.
 
+Right-click any mail folder to enable or disable notifications for that folder. A message moved by a Mailcario rule can alert you from its destination folder, and clicking the alert opens that folder. The general notification, sound and preview options remain in **Settings**.
+
+Received attachments are listed in the reading pane. You can download them, preview PDF, image and text files inside Mailcario, and print those previewable formats. Other file types can be saved and opened with a compatible application.
+
 ### A closer look
 
 | Compose | Import Thunderbird accounts |

@@ -14,6 +14,7 @@ public partial class MainWindow
 {
     private readonly Dictionary<string, (uint Validity, uint Uid)> _inboxCursors =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<(string Email, string Folder), (uint Validity, uint Uid)> _folderCursors = [];
     private readonly DispatcherTimer _mailTimer = new();
     private readonly CancellationTokenSource _monitorCancellation = new();
     private bool _monitorRunning;
@@ -22,6 +23,7 @@ public partial class MainWindow
     private readonly Dictionary<string, string> _connectionErrors = new(StringComparer.OrdinalIgnoreCase);
     private int _activeSyncOperations;
     private string? _lastNotifiedAccount;
+    private string _lastNotifiedFolder = "INBOX";
     private DateTimeOffset? _lastSuccessfulSync;
     private readonly Dictionary<string, int> _unreadInboxCounts = new(StringComparer.OrdinalIgnoreCase);
     private int _displayedUnreadCount = -1;
@@ -148,6 +150,12 @@ public partial class MainWindow
                 try
                 {
                     await using var session = await ImapSession.ConnectAsync(account, password, _monitorCancellation.Token);
+                    try
+                    {
+                        await MailRuleStore.ApplyAsync(session, account.Email, "INBOX", [], _monitorCancellation.Token);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { StatusLabel.Text = Localizer.T("rules") + ": " + ex.Message; }
                     InboxSnapshot snapshot = await session.GetInboxSnapshotAsync(_monitorCancellation.Token);
                     SetAccountConnected(account.Email, true);
                     SetInboxUnreadCount(account.Email, snapshot.UnreadCount);
@@ -155,8 +163,27 @@ public partial class MainWindow
                     {
                         bool activeInbox = IsActiveInbox(account.Email);
                         if (activeInbox) InsertIncomingInboxMessage(snapshot.Latest);
-                        await NotifyNewMailAsync(session, account.Email, snapshot.Latest, _monitorCancellation.Token);
+                        if (IsFolderNotificationEnabled(account.Email, "INBOX"))
+                            await NotifyNewMailAsync(session, account.Email, "INBOX", snapshot.Latest, _monitorCancellation.Token);
                         if (activeInbox && IsActiveInbox(account.Email)) await RefreshAsync(preserveLoaded: true);
+                    }
+                    foreach (string folder in NotificationFoldersFor(account.Email).Where(name =>
+                        !name.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
+                    {
+                        _monitorCancellation.Token.ThrowIfCancellationRequested();
+                        try
+                        {
+                            InboxSnapshot folderSnapshot = await session.GetFolderSnapshotAsync(folder,
+                                token: _monitorCancellation.Token);
+                            if (!ObserveFolder(account.Email, folder, folderSnapshot.UidValidity, folderSnapshot.Latest) ||
+                                folderSnapshot.Latest is null) continue;
+                            await NotifyNewMailAsync(session, account.Email, folder, folderSnapshot.Latest,
+                                _monitorCancellation.Token);
+                            if (IsActiveFolder(account.Email, folder)) await RefreshAsync(preserveLoaded: true);
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + folder + ": " + ex.Message; }
                     }
                 }
                 catch (OperationCanceledException) { throw; }
@@ -167,31 +194,59 @@ public partial class MainWindow
         finally { _monitorRunning = false; EndSync(); }
     }
 
-    private bool ObserveInbox(string email, uint validity, MailItem? latest)
+    private bool ObserveInbox(string email, uint validity, MailItem? latest) =>
+        AdvanceCursor(_inboxCursors, email, validity, latest);
+
+    private bool ObserveFolder(string email, string folder, uint validity, MailItem? latest) =>
+        AdvanceCursor(_folderCursors, (email.ToLowerInvariant(), folder), validity, latest);
+
+    private static bool AdvanceCursor<TKey>(Dictionary<TKey, (uint Validity, uint Uid)> cursors,
+        TKey key, uint validity, MailItem? latest) where TKey : notnull
     {
         if (latest is null)
         {
-            if (_inboxCursors.TryGetValue(email, out var emptyPrevious) && validity != 0 && emptyPrevious.Validity != validity)
-                _inboxCursors[email] = (validity, 0);
+            if (!cursors.TryGetValue(key, out var emptyPrevious) ||
+                (validity != 0 && emptyPrevious.Validity != validity))
+                cursors[key] = (validity, 0);
             return false;
         }
-        if (!_inboxCursors.TryGetValue(email, out var previous))
+        if (!cursors.TryGetValue(key, out var previous))
         {
-            _inboxCursors[email] = (validity, latest.Uid);
+            cursors[key] = (validity, latest.Uid);
             return false;
         }
         if (previous.Validity != 0 && validity != 0 && previous.Validity != validity)
         {
-            _inboxCursors[email] = (validity, latest.Uid);
+            cursors[key] = (validity, latest.Uid);
             return false;
         }
         if (latest.Uid <= previous.Uid)
         {
-            if (previous.Validity == 0 && validity != 0) _inboxCursors[email] = (validity, previous.Uid);
+            if (previous.Validity == 0 && validity != 0) cursors[key] = (validity, previous.Uid);
             return false;
         }
-        _inboxCursors[email] = (validity == 0 ? previous.Validity : validity, latest.Uid);
+        cursors[key] = (validity == 0 ? previous.Validity : validity, latest.Uid);
         return true;
+    }
+
+    private bool IsActiveFolder(string email, string folder) => !_calendarMode &&
+        email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase) &&
+        folder.Equals(_folder, StringComparison.OrdinalIgnoreCase);
+
+    private async Task PrimeFolderNotificationCursorAsync(MailAccount account, string folder)
+    {
+        try
+        {
+            string? password = AccountStore.LoadPassword(account.Email);
+            if (password is null) return;
+            await using var session = await ImapSession.ConnectAsync(account, password);
+            InboxSnapshot snapshot = await session.GetFolderSnapshotAsync(folder);
+            if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+                _inboxCursors[account.Email] = (snapshot.UidValidity, snapshot.Latest?.Uid ?? 0);
+            else _folderCursors[(account.Email.ToLowerInvariant(), folder)] =
+                (snapshot.UidValidity, snapshot.Latest?.Uid ?? 0);
+        }
+        catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
     }
 
     private MailItem? ObserveLoadedInbox()
@@ -201,7 +256,8 @@ public partial class MainWindow
         return ObserveInbox(_account.Email, 0, latest) ? latest : null;
     }
 
-    private async Task NotifyNewMailAsync(ImapSession session, string email, MailItem item, CancellationToken token)
+    private async Task NotifyNewMailAsync(ImapSession session, string email, string folder,
+        MailItem item, CancellationToken token)
     {
         if (_settings.PlaySound) SystemSounds.Asterisk.Play();
         if (!_settings.NotifyNewMail) return;
@@ -210,23 +266,28 @@ public partial class MainWindow
         {
             try
             {
-                string body = await session.LoadMessagePreviewAsync("INBOX", item.Uid, token);
+                string body = await session.LoadMessagePreviewAsync(folder, item.Uid, token);
                 preview = Regex.Replace(body, @"\s+", " ").Trim();
                 if (preview.Length > 150) preview = preview[..147] + "…";
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception) { /* A missing preview must not suppress the new-mail alert. */ }
         }
-        NotifyNewMail(email, item, preview);
+        NotifyNewMail(email, folder, item, preview);
     }
 
-    private void NotifyNewMail(string email, MailItem item, string preview)
+    private void NotifyNewMail(string email, string folder, MailItem item, string preview)
     {
         _lastNotifiedAccount = email;
+        _lastNotifiedFolder = folder;
+        string folderName = (email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase)
+            ? _allFolders.FirstOrDefault(value => value.ServerName.Equals(folder,
+                StringComparison.OrdinalIgnoreCase))?.DisplayName : null)
+            ?? new MailFolder { ServerName = folder }.DisplayName;
         string detail = _settings.ShowMessagePreview
-            ? $"{item.SenderName} · {item.Subject}" + (preview.Length > 0 ? "\n" + preview : "")
-            : Localizer.T("newMailNotification");
-        ShowNewMailBalloon(email, detail);
+            ? $"{email}\n{item.SenderName} · {item.Subject}" + (preview.Length > 0 ? "\n" + preview : "")
+            : email;
+        ShowNewMailBalloon(folderName, detail);
     }
 
     private void OpenFromMailNotice()
@@ -243,12 +304,15 @@ public partial class MainWindow
         MailAccount? account = _accounts.FirstOrDefault(value =>
             value.Email.Equals(_lastNotifiedAccount, StringComparison.OrdinalIgnoreCase));
         if (account is null) return;
+        string folder = _lastNotifiedFolder;
         if (!account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase))
         {
+            _updatingAccounts = true;
             AccountList.SelectedItem = account;
-            return;
+            _updatingAccounts = false;
+            if (!await SwitchAccountAsync(account)) return;
         }
-        await NavigateToInboxAsync();
+        await NavigateToFolderAsync(folder);
     }
 
     private void SetInboxUnreadCount(string email, int count)

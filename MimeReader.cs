@@ -14,7 +14,7 @@ public static class MimeReader
         public string PlainText = "";
         public string HtmlText = "";
         public string? CalendarText;
-        public List<string> Attachments = [];
+        public List<MailAttachment> Attachments = [];
         public Dictionary<string, InlineMailImage> InlineImages = new(StringComparer.OrdinalIgnoreCase);
     }
 
@@ -58,7 +58,8 @@ public static class MimeReader
             HtmlText = collector.HtmlText,
             Unsubscribe = UnsubscribeSupport.Parse(messageHeaders),
             CalendarText = collector.CalendarText,
-            AttachmentNames = collector.Attachments,
+            AttachmentNames = collector.Attachments.Select(item => item.FileName).ToArray(),
+            Attachments = collector.Attachments,
             InlineImages = collector.InlineImages
         };
     }
@@ -75,7 +76,6 @@ public static class MimeReader
         string contentType = headers.GetValueOrDefault("content-type") ?? "text/plain";
         string disposition = headers.GetValueOrDefault("content-disposition") ?? "";
         string? filename = Parameter(disposition, "filename") ?? Parameter(contentType, "name");
-        if (filename is not null) collector.Attachments.Add(DecodeHeader(filename));
 
         if (contentType.StartsWith("multipart/", StringComparison.OrdinalIgnoreCase))
         {
@@ -86,15 +86,32 @@ public static class MimeReader
             {
                 if (piece.StartsWith("--")) break;
                 string part = piece.TrimStart('\r', '\n');
+                if (part.EndsWith("\r\n", StringComparison.Ordinal)) part = part[..^2];
+                else if (part.EndsWith("\n", StringComparison.Ordinal)) part = part[..^1];
                 if (!string.IsNullOrWhiteSpace(part)) ReadPart(part, collector, depth + 1);
             }
             return;
         }
 
+        string mediaType = contentType.Split(';')[0].Trim().ToLowerInvariant();
+        string transferEncoding = headers.GetValueOrDefault("content-transfer-encoding") ?? "";
+        bool explicitAttachment = disposition.StartsWith("attachment", StringComparison.OrdinalIgnoreCase);
+        bool inlineImage = mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+            (headers.ContainsKey("content-id") || headers.ContainsKey("content-location"));
+        byte[]? decoded = null;
+        if (explicitAttachment || (filename is not null && !inlineImage))
+        {
+            decoded = DecodeTransfer(body, transferEncoding);
+            string safeName = SafeAttachmentName(filename is null ? null : DecodeHeader(filename),
+                collector.Attachments.Count + 1, mediaType);
+            collector.Attachments.Add(new MailAttachment(safeName, mediaType,
+                Parameter(contentType, "charset"), decoded));
+        }
+
         if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
             InlineMailImage.NormalizeId(headers.GetValueOrDefault("content-id")) is string contentId)
         {
-            byte[] imageBytes = DecodeTransfer(body, headers.GetValueOrDefault("content-transfer-encoding") ?? "");
+            byte[] imageBytes = decoded ?? DecodeTransfer(body, transferEncoding);
             if (imageBytes.Length is > 0 and <= 4_000_000)
             {
                 collector.InlineImages.TryAdd(contentId,
@@ -109,16 +126,17 @@ public static class MimeReader
         if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
             InlineMailImage.NormalizeSource(headers.GetValueOrDefault("content-location")) is string imageLocation)
         {
-            byte[] imageBytes = DecodeTransfer(body, headers.GetValueOrDefault("content-transfer-encoding") ?? "");
+            byte[] imageBytes = decoded ?? DecodeTransfer(body, transferEncoding);
             if (imageBytes.Length is > 0 and <= 4_000_000)
                 collector.InlineImages.TryAdd(imageLocation,
                     new InlineMailImage(contentType.Split(';')[0].Trim(), imageBytes));
             return;
         }
 
-        if (filename is not null && !contentType.StartsWith("text/calendar", StringComparison.OrdinalIgnoreCase) &&
-            !filename.EndsWith(".ics", StringComparison.OrdinalIgnoreCase)) return;
-        byte[] decoded = DecodeTransfer(body, headers.GetValueOrDefault("content-transfer-encoding") ?? "");
+        if ((filename is not null || explicitAttachment) &&
+            !contentType.StartsWith("text/calendar", StringComparison.OrdinalIgnoreCase) &&
+            filename?.EndsWith(".ics", StringComparison.OrdinalIgnoreCase) != true) return;
+        decoded ??= DecodeTransfer(body, transferEncoding);
         string charset = Parameter(contentType, "charset") ?? "utf-8";
         string text = DecodeBytes(decoded, charset);
         if (contentType.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase))
@@ -161,8 +179,66 @@ public static class MimeReader
         }
     }
 
+    internal static string SafeAttachmentName(string? value, int index, string mediaType)
+    {
+        string name = (value ?? "").Replace('\\', '/').Split('/').Last();
+        char[] invalid = Path.GetInvalidFileNameChars();
+        name = new string(name.Select(character => char.IsControl(character) ||
+            invalid.Contains(character) ? '_' : character).ToArray()).Trim().TrimEnd('.');
+        if (name.Length == 0)
+            name = "attachment-" + index + (mediaType switch
+            {
+                "application/pdf" => ".pdf",
+                "image/png" => ".png",
+                "image/jpeg" => ".jpg",
+                "text/plain" => ".txt",
+                "text/calendar" => ".ics",
+                _ => ""
+            });
+        string stem = Path.GetFileNameWithoutExtension(name);
+        if (new[] { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5",
+            "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5",
+            "LPT6", "LPT7", "LPT8", "LPT9" }.Contains(stem, StringComparer.OrdinalIgnoreCase))
+            name = "_" + name;
+        if (name.Length > 180)
+        {
+            string extension = Path.GetExtension(name);
+            if (extension.Length > 20) extension = "";
+            name = name[..(180 - extension.Length)] + extension;
+        }
+        return name;
+    }
+
     private static string? Parameter(string header, string name)
     {
+        var extended = Regex.Match(header, @"(?:^|;)\s*" + Regex.Escape(name) +
+            @"\*\s*=\s*(?:""(?<quoted>[^""]*)""|(?<plain>[^;\s]+))", RegexOptions.IgnoreCase);
+        if (extended.Success)
+        {
+            string value = extended.Groups["quoted"].Success ? extended.Groups["quoted"].Value :
+                extended.Groups["plain"].Value;
+            int firstQuote = value.IndexOf('\'');
+            int secondQuote = firstQuote < 0 ? -1 : value.IndexOf('\'', firstQuote + 1);
+            if (secondQuote >= 0)
+            {
+                try
+                {
+                    string charset = value[..firstQuote];
+                    string encoded = value[(secondQuote + 1)..];
+                    using var bytes = new MemoryStream();
+                    for (int index = 0; index < encoded.Length; index++)
+                    {
+                        if (encoded[index] == '%' && index + 2 < encoded.Length &&
+                            byte.TryParse(encoded.Substring(index + 1, 2),
+                                System.Globalization.NumberStyles.HexNumber, null, out byte octet))
+                        { bytes.WriteByte(octet); index += 2; }
+                        else bytes.WriteByte((byte)encoded[index]);
+                    }
+                    return DecodeBytes(bytes.ToArray(), charset);
+                }
+                catch (ArgumentException) { }
+            }
+        }
         var match = Regex.Match(header, @"(?:^|;)\s*" + Regex.Escape(name) + @"\s*=\s*(?:""(?<quoted>[^""]*)""|(?<plain>[^;\s]+))", RegexOptions.IgnoreCase);
         return match.Success ? (match.Groups["quoted"].Success ? match.Groups["quoted"].Value : match.Groups["plain"].Value) : null;
     }

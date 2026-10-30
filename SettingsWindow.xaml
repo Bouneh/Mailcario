@@ -28,6 +28,8 @@
             <CheckBox x:Name="NotifyCheck" Margin="0,0,0,10"/>
             <CheckBox x:Name="SoundCheck" Margin="0,0,0,10"/>
             <CheckBox x:Name="PreviewCheck" Margin="0,0,0,13"/>
+            <TextBlock x:Name="FolderNotificationsHint" Foreground="{DynamicResource Muted}"
+                       TextWrapping="Wrap" Margin="0,0,0,13" FontSize="11"/>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
               <TextBlock x:Name="IntervalLabel" VerticalAlignment="Center" Foreground="{DynamicResource Ink}" Margin="0,0,12,0"/>
               <ComboBox x:Name="IntervalBox" Width="105" SelectedValuePath="Tag">

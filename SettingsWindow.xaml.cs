@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
         Settings = settings.Copy();
         Heading.Text = Localizer.T("clientSettings");
         Subtitle.Text = Localizer.T("settingsSubtitle");
+        FolderNotificationsHint.Text = Localizer.T("folderNotificationsHint");
         AppearanceHeading.Text = Localizer.T("appearanceSettings");
         ThemeLabel.Text = Localizer.T("themeMode");
         ((ComboBoxItem)ThemeCombo.Items[0]).Content = Localizer.T("themeSystem");

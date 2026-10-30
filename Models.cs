@@ -86,6 +86,9 @@ public sealed class MailFolder
     public bool CanSelect { get; init; } = true;
     public bool HasChildren { get; init; }
     public bool IsExpanded { get; init; } = true;
+    public bool NotificationsEnabled { get; init; }
+    public System.Windows.Visibility NotificationVisibility => NotificationsEnabled
+        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
     public System.Windows.Visibility ExpandVisibility => HasChildren ? System.Windows.Visibility.Visible : System.Windows.Visibility.Hidden;
     public string ExpandGlyph => IsExpanded ? "\uE70D" : "\uE76C";
     public string ExpandHint => Localizer.T(IsExpanded ? "collapseFolder" : "expandFolder");
@@ -112,8 +115,23 @@ public sealed class MailContent
     public UnsubscribeAction? Unsubscribe { get; init; }
     public string? CalendarText { get; init; }
     public IReadOnlyList<string> AttachmentNames { get; init; } = [];
+    public IReadOnlyList<MailAttachment> Attachments { get; init; } = [];
     public IReadOnlyDictionary<string, InlineMailImage> InlineImages { get; init; } =
         new Dictionary<string, InlineMailImage>(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed record MailAttachment(string FileName, string ContentType, string? Charset, byte[] Bytes)
+{
+    public long Length => Bytes.LongLength;
+    public string SizeLabel => Length < 1024 ? $"{Length} {(Localizer.Language == "fr" ? "o" : "B")}" : Length < 1024 * 1024
+        ? $"{Length / 1024.0:0.#} {(Localizer.Language == "fr" ? "Ko" : "KB")}" :
+        $"{Length / 1024.0 / 1024.0:0.#} {(Localizer.Language == "fr" ? "Mo" : "MB")}";
+    public string Details => ContentType + " · " + SizeLabel;
+    public bool CanPreview => AttachmentPreviewSupport.CanPreview(this);
+    public bool CanPrint => CanPreview;
+    public string OpenLabel => Localizer.T("openAttachment");
+    public string SaveLabel => Localizer.T("saveAttachment");
+    public string PrintLabel => Localizer.T("printAttachment");
 }
 
 public sealed record InlineMailImage(string ContentType, byte[] Bytes)

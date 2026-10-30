@@ -139,6 +139,8 @@ public partial class MainWindow : Window
         CalendarHint.Text = Localizer.T("localCalendar");
         ReplyButtonLabel.Text = Localizer.T("reply");
         ForwardButtonLabel.Text = Localizer.T("forward");
+        AttachmentsLabel.Text = string.Format(Localizer.T("attachmentsCount"), _selectedContent?.Attachments.Count ?? 0);
+        ReceivedAttachmentList.Items.Refresh();
         InviteHeading.Text = Localizer.T("invite");
         UnsubscribeLabel.Text = Localizer.T("newsletterNotice");
         UnsubscribeButton.Content = Localizer.T("unsubscribe");
@@ -279,7 +281,8 @@ public partial class MainWindow : Window
             _searchResults = null;
             FilterMessages();
             MailItem? newMail = ObserveLoadedInbox();
-            if (newMail is not null) await NotifyNewMailAsync(session, account.Email, newMail, cts.Token);
+            if (newMail is not null && IsFolderNotificationEnabled(account.Email, "INBOX"))
+                await NotifyNewMailAsync(session, account.Email, "INBOX", newMail, cts.Token);
             FolderTitle.Text = CurrentFolderLabel();
             StatusLabel.Text = ruleError is not null ? Localizer.T("rules") + ": " + ruleError :
                 _messages.Count == 0 ? Localizer.T("noMessages") : $"{_messages.Count} · {Localizer.T("ready")}";
@@ -513,6 +516,8 @@ public partial class MainWindow : Window
         ClearLinkTarget();
         UpdateRibbonSelection();
         _selectedContent = null;
+        ReceivedAttachmentList.ItemsSource = null;
+        AttachmentsPanel.Visibility = Visibility.Collapsed;
         _invite = null;
         CancelImageLoad();
         _loadedImages = new ConcurrentDictionary<string, BitmapSource>(StringComparer.Ordinal);
@@ -587,8 +592,12 @@ public partial class MainWindow : Window
                 }
                 catch (RegexMatchTimeoutException) { /* Plain text remains available. */ }
             }
-            if (content.AttachmentNames.Count > 0)
-                AttachmentsLabel.Text = Localizer.T("attachments") + ": " + string.Join(", ", content.AttachmentNames);
+            if (content.Attachments.Count > 0)
+            {
+                AttachmentsLabel.Text = string.Format(Localizer.T("attachmentsCount"), content.Attachments.Count);
+                ReceivedAttachmentList.ItemsSource = content.Attachments;
+                AttachmentsPanel.Visibility = Visibility.Visible;
+            }
             _invite = CalendarSupport.Parse(content.CalendarText);
             if (_invite is not null)
             {
@@ -876,6 +885,11 @@ public partial class MainWindow : Window
     private async void AccountList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_updatingAccounts || AccountList.SelectedItem is not MailAccount account || account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase)) return;
+        await SwitchAccountAsync(account);
+    }
+
+    private async Task<bool> SwitchAccountAsync(MailAccount account)
+    {
         _account = account;
         _password = AccountStore.LoadPassword(account.Email);
         AccountStore.SaveActiveEmail(account.Email);
@@ -883,9 +897,10 @@ public partial class MainWindow : Window
         if (_password is null && !ShowAccountWindow(account))
         {
             StatusLabel.Text = Localizer.T("statusConnect");
-            return;
+            return false;
         }
         await RefreshAsync(true);
+        return true;
     }
     private async void InboxButton_Click(object sender, RoutedEventArgs e)
     {
@@ -921,12 +936,30 @@ public partial class MainWindow : Window
             _updatingFolders = false;
             return;
         }
+        await NavigateToFolderAsync(folder.ServerName);
+    }
+
+    private async Task NavigateToFolderAsync(string serverName)
+    {
+        if (serverName.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+        {
+            await NavigateToInboxAsync();
+            return;
+        }
+        MailFolder? folder = _allFolders.FirstOrDefault(value => value.CanSelect &&
+            value.ServerName.Equals(serverName, StringComparison.OrdinalIgnoreCase));
+        if (folder is null)
+        {
+            await NavigateToInboxAsync();
+            return;
+        }
         _folder = folder.ServerName;
         _folderDelimiter = folder.Delimiter;
         _searchCts?.Cancel();
         _searchResults = null;
         SearchBox.Clear();
         _calendarLoaded = false;
+        ApplyFolderList();
         ShowInbox();
         await RefreshAsync();
     }

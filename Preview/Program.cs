@@ -195,6 +195,119 @@ internal static class Program
             if (!passed) Environment.ExitCode = 1;
             return;
         }
+        if (args.Length > 0 && args[0] == "--folder-notification-check")
+        {
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var window = new MainWindow();
+            var account = new MailAccount { Email = "alerts@example.invalid" };
+            typeof(MainWindow).GetField("_account", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, account);
+            var state = (FolderViewState)typeof(MainWindow).GetField("_folderView",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            state.NotificationFolders = ["INBOX", "Koala Club"];
+            var settings = (ClientSettings)typeof(MainWindow).GetField("_settings",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            settings.FolderViews[account.Email.ToLowerInvariant()] = state;
+            typeof(MainWindow).GetField("_allFolders", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, new[] { new MailFolder { ServerName = "INBOX" },
+                    new MailFolder { ServerName = "Koala Club" } });
+            typeof(MainWindow).GetMethod("ApplyFolderList", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            var folders = (ListBox)window.FindName("FolderList");
+            bool passed = folders.Items.Count == 2 &&
+                ((MailFolder)folders.Items[1]).NotificationsEnabled;
+            var row = new ListBoxItem { DataContext = folders.Items[1] };
+            typeof(MainWindow).GetMethod("FolderItem_PreviewMouseRightButtonDown",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
+                [row, new System.Windows.Input.MouseButtonEventArgs(
+                    System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Right)
+                { RoutedEvent = UIElement.PreviewMouseRightButtonDownEvent }]);
+            passed &= row.ContextMenu is { } menu && menu.Items.OfType<MenuItem>().Any(item =>
+                item.Header?.ToString() == Localizer.T("disableFolderNotifications"));
+            var observe = typeof(MainWindow).GetMethod("ObserveFolder",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            bool Seen(string email, string folder, uint validity, uint? uid) =>
+                (bool)observe.Invoke(window, [email, folder, validity,
+                    uid is uint value ? new MailItem { Uid = value } : null])!;
+            passed &= !Seen(account.Email, "Koala Club", 1, 10) &&
+                Seen(account.Email, "Koala Club", 1, 11) &&
+                !Seen(account.Email, "Koala Club", 1, 11) &&
+                !Seen(account.Email, "Koala Club", 2, 3) &&
+                Seen(account.Email, "Koala Club", 2, 4) &&
+                !Seen("other@example.invalid", "Koala Club", 1, 4) &&
+                !Seen(account.Email, "Empty", 1, null) &&
+                Seen(account.Email, "Empty", 1, 1);
+            var legacyView = JsonSerializer.Deserialize<FolderViewState>("{\"HiddenFolders\":[]}")!;
+            passed &= legacyView.NotificationFolders.SequenceEqual(["INBOX"]);
+            var restored = JsonSerializer.Deserialize<FolderViewState>(JsonSerializer.Serialize(state))!;
+            passed &= restored.NotificationFolders.Contains("Koala Club");
+            typeof(MainWindow).GetMethod("NotifyNewMail", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, [account.Email, "Koala Club", new MailItem { Uid = 12,
+                    From = "Koala <koala@example.invalid>", Subject = "News" }, "Preview"]);
+            passed &= (string)typeof(MainWindow).GetField("_lastNotifiedFolder",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)! == "Koala Club";
+            window.Close();
+            ThemeManager.Shutdown();
+            Console.WriteLine(passed ? "Folder notification check passed" : "Folder notification check failed");
+            if (!passed) Environment.ExitCode = 1;
+            return;
+        }
+        if (args.Length > 0 && args[0] == "--attachment-check")
+        {
+            byte[] pdfBytes = Encoding.ASCII.GetBytes("%PDF-1.4\nexample attachment\n");
+            string mime = "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=mailcario-test\r\n\r\n" +
+                "--mailcario-test\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n" +
+                "--mailcario-test\r\nContent-Type: application/pdf\r\n" +
+                "Content-Disposition: attachment; filename*=UTF-8''rapport-%C3%A9t%C3%A9.pdf\r\n" +
+                "Content-Transfer-Encoding: base64\r\n\r\n" + Convert.ToBase64String(pdfBytes) + "\r\n" +
+                "--mailcario-test\r\nContent-Type: text/csv; charset=iso-8859-1\r\n" +
+                "Content-Disposition: attachment; filename=\"../archive/contacts.csv\"\r\n" +
+                "Content-Transfer-Encoding: quoted-printable\r\n\r\nnom=2Cville=0AAndr=E9=2CParis\r\n" +
+                "--mailcario-test\r\nContent-Type: image/png\r\nContent-ID: <logo@example.invalid>\r\n" +
+                "Content-Disposition: inline; filename=\"logo.png\"\r\n" +
+                "Content-Transfer-Encoding: base64\r\n\r\nAQID\r\n" +
+                "--mailcario-test--\r\n";
+            MailContent parsed = MimeReader.ReadMessage(Encoding.Latin1.GetBytes(mime));
+            bool passed = parsed.PlainText == "Hello" && parsed.Attachments.Count == 2 &&
+                parsed.Attachments[0].FileName == "rapport-été.pdf" &&
+                parsed.Attachments[0].Bytes.SequenceEqual(pdfBytes) &&
+                AttachmentPreviewSupport.Kind(parsed.Attachments[0]) == AttachmentPreviewKind.Pdf &&
+                parsed.Attachments[1].FileName == "contacts.csv" &&
+                AttachmentPreviewSupport.ReadText(parsed.Attachments[1]) == "nom,ville\nAndré,Paris" &&
+                parsed.InlineImages.ContainsKey("cid:logo@example.invalid") &&
+                !parsed.AttachmentNames.Contains("logo.png");
+            var unsafeFile = new MailAttachment("danger.exe", "application/octet-stream", null, [1, 2, 3]);
+            passed &= !unsafeFile.CanPreview && !unsafeFile.CanPrint;
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var preview = new AttachmentPreviewWindow(parsed.Attachments[1]);
+            passed &= ((TextBlock)preview.FindName("FileNameLabel")).Text == "contacts.csv" &&
+                ((Button)preview.FindName("PrintButton")).IsEnabled &&
+                ((Button)preview.FindName("SaveButton")).Content?.ToString() == Localizer.T("saveAttachment");
+            var pdfRange = typeof(AttachmentPreviewWindow).GetMethod("PdfRange",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            passed &= ((ValueTuple<int, int, int>)pdfRange.Invoke(null, ["bytes=0-4", 20])!) == (0, 5, 206) &&
+                ((ValueTuple<int, int, int>)pdfRange.Invoke(null, ["bytes=15-", 20])!) == (15, 5, 206) &&
+                ((ValueTuple<int, int, int>)pdfRange.Invoke(null, ["bytes=-4", 20])!) == (16, 4, 206) &&
+                ((ValueTuple<int, int, int>)pdfRange.Invoke(null, ["bytes=30-", 20])!).Item3 == 416;
+            preview.Close();
+            var imageAttachment = new MailAttachment("Logo.png", "image/png", null,
+                File.ReadAllBytes(Path.Combine("Assets", "Mailcario-512.png")));
+            var imageWindow = new AttachmentPreviewWindow(imageAttachment);
+            ((Task)typeof(AttachmentPreviewWindow).GetMethod("LoadPreviewAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(imageWindow, null)!).GetAwaiter().GetResult();
+            passed &= ((Image)imageWindow.FindName("ImagePreview")).Source is BitmapSource &&
+                ((Button)imageWindow.FindName("PrintButton")).IsEnabled;
+            imageWindow.Close();
+            ThemeManager.Shutdown();
+            Console.WriteLine(passed ? "Attachment decoding and preview check passed" :
+                "Attachment decoding or preview check failed");
+            if (!passed) Environment.ExitCode = 1;
+            return;
+        }
         if (args.Length > 0 && args[0] == "--thunderbird-import-check")
         {
             string prefsPath = Path.Combine(Path.GetTempPath(), "Mailcario-Thunderbird-" + Guid.NewGuid().ToString("N") + ".js");
@@ -769,6 +882,50 @@ internal static class Program
             System.Windows.Threading.Dispatcher.Run();
             return;
         }
+        if (args.Length > 0 && args[0] == "--attachment-pdf-preview-check")
+        {
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            string outputImage = args.Length > 1 ? args[1] :
+                Path.Combine(Path.GetTempPath(), "Mailcario-attachment-pdf-preview.png");
+            var attachment = new MailAttachment("Preview.pdf", "application/pdf", null, BuildTestPdf());
+            var window = new AttachmentPreviewWindow(attachment)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual, Left = -4000, Top = -4000,
+                ShowInTaskbar = false, ShowActivated = false
+            };
+            var timeout = new System.Windows.Threading.DispatcherTimer
+            { Interval = TimeSpan.FromSeconds(20) };
+            void Finish(bool passed, string detail)
+            {
+                timeout.Stop();
+                Console.WriteLine((passed ? "PDF attachment preview passed: " : "PDF attachment preview failed: ") + detail);
+                if (!passed) Environment.ExitCode = 1;
+                window.Close();
+                System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvokeShutdown(
+                    System.Windows.Threading.DispatcherPriority.Background);
+            }
+            timeout.Tick += (_, _) => Finish(false, "timed out");
+            ((WebView2)window.FindName("PdfPreview")).NavigationCompleted += async (_, e) =>
+            {
+                try
+                {
+                    if (!e.IsSuccess) throw new InvalidOperationException("PDF navigation failed.");
+                    await Task.Delay(700);
+                    using var outputStream = File.Create(outputImage);
+                    await ((WebView2)window.FindName("PdfPreview")).CoreWebView2
+                        .CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, outputStream);
+                    Finish(true, outputImage);
+                }
+                catch (Exception ex) { Finish(false, ex.Message); }
+            };
+            timeout.Start();
+            window.Show();
+            System.Windows.Threading.Dispatcher.Run();
+            ThemeManager.Shutdown();
+            return;
+        }
         if (args.Length > 0 && args[0] == "--storage-check")
         {
             string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -984,6 +1141,29 @@ internal static class Program
         ((System.Windows.Shapes.Ellipse)populated.FindName("ConnectionDot")).Fill =
             (Brush)populated.FindResource("IconSync");
         Render(populated, 1320, 780, Path.Combine(output, "main-populated.png"));
+        var receivedPreview = new MainWindow();
+        ((Grid)receivedPreview.FindName("ReaderContent")).Visibility = Visibility.Visible;
+        ((StackPanel)receivedPreview.FindName("ReaderEmptyState")).Visibility = Visibility.Collapsed;
+        ((TextBlock)receivedPreview.FindName("SubjectLabel")).Text = "Compte rendu de réunion";
+        ((TextBlock)receivedPreview.FindName("FromLabel")).Text = "Camille Dupont";
+        ((TextBlock)receivedPreview.FindName("SenderAddressLabel")).Text = "camille@example.invalid";
+        ((TextBlock)receivedPreview.FindName("ToLabel")).Text = "À : hello@example.invalid";
+        ((TextBlock)receivedPreview.FindName("BodyLabel")).Text = "Bonjour,\n\nTu trouveras les documents en pièces jointes.\n\nBonne journée,\nCamille";
+        var demoAttachments = new[]
+        {
+            new MailAttachment("Compte rendu.pdf", "application/pdf", null, Encoding.ASCII.GetBytes("%PDF-1.4\n")),
+            new MailAttachment("Photo de l'équipe.png", "image/png", null, [137, 80, 78, 71]),
+            new MailAttachment("Notes.txt", "text/plain", "utf-8", Encoding.UTF8.GetBytes("Notes de réunion"))
+        };
+        ((ItemsControl)receivedPreview.FindName("ReceivedAttachmentList")).ItemsSource = demoAttachments;
+        ((Border)receivedPreview.FindName("AttachmentsPanel")).Visibility = Visibility.Visible;
+        ((TextBlock)receivedPreview.FindName("AttachmentsLabel")).Text =
+            string.Format(Localizer.T("attachmentsCount"), demoAttachments.Length);
+        Render(receivedPreview, 1320, 780, Path.Combine(output, "received-attachments.png"));
+        var attachmentWindow = new AttachmentPreviewWindow(demoAttachments[2]);
+        ((Task)typeof(AttachmentPreviewWindow).GetMethod("LoadPreviewAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(attachmentWindow, null)!).GetAwaiter().GetResult();
+        Render(attachmentWindow, 900, 680, Path.Combine(output, "attachment-text-preview.png"));
         var searchDark = new MainWindow();
         ((TextBox)searchDark.FindName("SearchBox")).Text = "Rechercher un message";
         Render(searchDark, 1320, 780, Path.Combine(output, "search-dark.png"));
@@ -1076,5 +1256,28 @@ internal static class Program
         using var stream = File.Create(path);
         encoder.Save(stream);
         window.Close();
+    }
+
+    private static byte[] BuildTestPdf()
+    {
+        var pdf = new StringBuilder("%PDF-1.4\n");
+        var offsets = new List<int>();
+        void AddObject(int number, string content)
+        {
+            offsets.Add(Encoding.ASCII.GetByteCount(pdf.ToString()));
+            pdf.Append(number).Append(" 0 obj\n").Append(content).Append("\nendobj\n");
+        }
+        AddObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        AddObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        AddObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " +
+            "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>");
+        string stream = "BT /F1 20 Tf 72 720 Td (Mailcario PDF attachment preview) Tj ET\n";
+        AddObject(4, $"<< /Length {Encoding.ASCII.GetByteCount(stream)} >>\nstream\n{stream}endstream");
+        AddObject(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+        int xref = Encoding.ASCII.GetByteCount(pdf.ToString());
+        pdf.Append("xref\n0 6\n0000000000 65535 f \n");
+        foreach (int offset in offsets) pdf.Append(offset.ToString("D10")).Append(" 00000 n \n");
+        pdf.Append("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n").Append(xref).Append("\n%%EOF\n");
+        return Encoding.ASCII.GetBytes(pdf.ToString());
     }
 }

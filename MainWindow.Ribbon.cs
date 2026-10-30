@@ -183,6 +183,9 @@ public partial class MainWindow
                 _connectedAccounts.Remove(email);
                 _connectionErrors.Remove(email);
                 _inboxCursors.Remove(email);
+                foreach (var key in _folderCursors.Keys.Where(key =>
+                             key.Email.Equals(email, StringComparison.OrdinalIgnoreCase)).ToList())
+                    _folderCursors.Remove(key);
                 _unreadInboxCounts.Remove(email);
             }
             _settings.Save();
@@ -367,6 +370,7 @@ public partial class MainWindow
         {
             await using var session = await ImapSession.ConnectAsync(_account, _password);
             await session.RenameFolderAsync(source, target);
+            RenameFolderNotificationPreference(source, target, separator);
             _folder = target;
             await RefreshAsync(true);
         }
