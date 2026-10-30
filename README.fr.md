@@ -33,6 +33,8 @@
 
 Mailcario est un **client de messagerie local pour Windows**. Aucun serveur personnel n’est nécessaire : il utilise votre fournisseur de messagerie actuel. Les paramètres restent sur votre PC ; les identifiants enregistrés sont protégés pour votre compte Windows.
 
+Chaque dossier charge d’abord les messages récents, puis les plus anciens quand vous faites défiler la liste ou cliquez sur **Charger les messages précédents**. Les résultats de recherche continuent aussi au-delà de la première page.
+
 ### Aperçu
 
 | Rédaction | Import de comptes Thunderbird |

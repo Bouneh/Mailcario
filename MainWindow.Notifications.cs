@@ -156,7 +156,7 @@ public partial class MainWindow
                         bool activeInbox = IsActiveInbox(account.Email);
                         if (activeInbox) InsertIncomingInboxMessage(snapshot.Latest);
                         await NotifyNewMailAsync(session, account.Email, snapshot.Latest, _monitorCancellation.Token);
-                        if (activeInbox && IsActiveInbox(account.Email)) await RefreshAsync();
+                        if (activeInbox && IsActiveInbox(account.Email)) await RefreshAsync(preserveLoaded: true);
                     }
                 }
                 catch (OperationCanceledException) { throw; }

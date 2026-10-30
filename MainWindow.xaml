@@ -253,7 +253,7 @@
       <!-- Message list -->
       <Border x:Name="MessagesPanel" Grid.Column="3" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0">
         <Grid>
-          <Grid.RowDefinitions><RowDefinition Height="72"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <Grid.RowDefinitions><RowDefinition Height="72"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <Border Grid.Row="0" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1" Padding="18,8,15,5">
             <Grid>
               <Grid.RowDefinitions><RowDefinition Height="28"/><RowDefinition Height="27"/></Grid.RowDefinitions>
@@ -268,7 +268,10 @@
             </Grid>
           </Border>
           <Grid Grid.Row="1">
-            <ListBox x:Name="MessageList" Tag="17,11,16,11" SelectionChanged="MessageList_SelectionChanged">
+            <ListBox x:Name="MessageList" Tag="17,11,16,11" SelectionChanged="MessageList_SelectionChanged"
+                     ScrollViewer.ScrollChanged="MessageList_ScrollChanged" ScrollViewer.CanContentScroll="True"
+                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.IsVirtualizingWhenGrouping="True"
+                     VirtualizingPanel.VirtualizationMode="Recycling">
               <ListBox.GroupStyle>
                 <GroupStyle>
                   <GroupStyle.HeaderTemplate>
@@ -320,6 +323,9 @@
             </ListBox>
             <TextBlock x:Name="MessageEmptyLabel" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Grid>
+          <Button x:Name="LoadOlderButton" Grid.Row="2" Visibility="Collapsed" Click="LoadOlderButton_Click"
+                  Style="{StaticResource RibbonTabButton}" HorizontalAlignment="Stretch" Padding="12,8"
+                  BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,0,0"/>
         </Grid>
       </Border>
 

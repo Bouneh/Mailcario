@@ -138,6 +138,63 @@ internal static class Program
             if (!passed) Environment.ExitCode = 1;
             return;
         }
+        if (args.Length > 0 && args[0] == "--mail-pagination-check")
+        {
+            var bounds = typeof(ImapSession).GetMethod("PageBounds",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            bool passed = ((ValueTuple<int, int, int>)bounds.Invoke(null, [105, null, 50])!) == (56, 105, 55) &&
+                ((ValueTuple<int, int, int>)bounds.Invoke(null, [105, 55, 50])!) == (6, 55, 5) &&
+                ((ValueTuple<int, int, int>)bounds.Invoke(null, [105, 5, 50])!) == (1, 5, 0) &&
+                ((ValueTuple<int, int, int>)bounds.Invoke(null, [0, null, 50])!) == (1, 0, 0);
+            var merge = typeof(MainWindow).GetMethod("MergeRefreshedPage",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            var fetched = Enumerable.Range(56, 50).Select(uid => new MailItem { Uid = (uint)uid }).ToArray();
+            var fresh = fetched.Where(item => item.Uid != 104).ToArray();
+            var previous = Enumerable.Range(1, 105).Select(uid => new MailItem { Uid = (uint)uid }).ToArray();
+            var merged = (IReadOnlyList<MailItem>)merge.Invoke(null, [fresh, fetched, previous])!;
+            passed &= merged.Count == 104 && merged.Any(item => item.Uid == 1) &&
+                !merged.Any(item => item.Uid == 104);
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var window = new MainWindow();
+            var messages = Enumerable.Range(1, 60).Select(uid => new MailItem { Uid = (uint)uid,
+                Subject = "Message " + uid, Date = DateTimeOffset.UtcNow.AddMinutes(-uid) }).ToArray();
+            typeof(MainWindow).GetField("_messages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, messages);
+            typeof(MainWindow).GetField("_folderTotalCount", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, 105);
+            typeof(MainWindow).GetField("_nextOlderSequence", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, 45);
+            typeof(MainWindow).GetMethod("FilterMessages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            var paginationList = (ListBox)window.FindName("MessageList");
+            var more = (Button)window.FindName("LoadOlderButton");
+            passed &= paginationList.Items.Count == 60 && more.Visibility == Visibility.Visible &&
+                ((TextBlock)window.FindName("CountLabel")).Text.Contains("60/105");
+            var incoming = new MailItem { Uid = 106, Subject = "Latest", Date = DateTimeOffset.UtcNow };
+            typeof(MainWindow).GetMethod("InsertIncomingInboxMessage",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [incoming]);
+            passed &= paginationList.Items.Count == 61 && paginationList.Items.Cast<MailItem>().Any(item => item.Uid == 60);
+            ((TextBox)window.FindName("SearchBox")).Text = "message";
+            typeof(MainWindow).GetField("_searchResults", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, messages.Take(3).ToArray());
+            typeof(MainWindow).GetField("_searchTotalCount", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, 80);
+            typeof(MainWindow).GetField("_nextOlderSearchIndex", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, 77);
+            typeof(MainWindow).GetField("_loadedSearchQuery", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, "message");
+            typeof(MainWindow).GetMethod("FilterMessages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
+            passed &= paginationList.Items.Count == 3 && more.Visibility == Visibility.Visible &&
+                ((TextBlock)window.FindName("CountLabel")).Text.Contains("3/80");
+            window.Close();
+            ThemeManager.Shutdown();
+            Console.WriteLine(passed ? "Mail pagination check passed" : "Mail pagination check failed");
+            if (!passed) Environment.ExitCode = 1;
+            return;
+        }
         if (args.Length > 0 && args[0] == "--thunderbird-import-check")
         {
             string prefsPath = Path.Combine(Path.GetTempPath(), "Mailcario-Thunderbird-" + Guid.NewGuid().ToString("N") + ".js");

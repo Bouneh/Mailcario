@@ -33,6 +33,8 @@
 
 Mailcario is a **local Windows email client**. You do not need to host a server to read or send mail through your existing provider. Account settings stay on your PC; stored credentials are protected for your Windows user account.
 
+Each folder loads recent messages first, then loads older messages as you scroll or select **Load older messages**. Search results also continue beyond the first page.
+
 ### A closer look
 
 | Compose | Import Thunderbird accounts |

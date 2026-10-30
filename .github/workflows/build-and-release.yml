@@ -30,6 +30,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'HTML security check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --inbox-sync-check
           if ($LASTEXITCODE -ne 0) { throw 'Incoming mail list update check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --mail-pagination-check
+          if ($LASTEXITCODE -ne 0) { throw 'Mail pagination check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --single-instance-check
           if ($LASTEXITCODE -ne 0) { throw 'Single instance activation check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --unread-badge-check

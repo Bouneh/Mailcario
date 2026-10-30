@@ -112,18 +112,31 @@ public sealed class ImapSession : IAsyncDisposable
             StringComparer.CurrentCultureIgnoreCase)).ToList();
     }
 
-    public async Task<IReadOnlyList<MailItem>> LoadRecentAsync(string folder, int count = 30,
+    public async Task<IReadOnlyList<MailItem>> LoadRecentAsync(string folder, int count = 50,
+        CancellationToken token = default, bool sentFolder = false) =>
+        (await LoadPageAsync(folder, null, count, token, sentFolder)).Messages;
+
+    public async Task<MailPage> LoadPageAsync(string folder, int? beforeSequence = null, int count = 50,
         CancellationToken token = default, bool sentFolder = false)
     {
         int total = await SelectAsync(folder, token);
+        var (first, last, next) = PageBounds(total, beforeSequence, count);
         var items = new List<MailItem>();
-        for (int sequence = total; sequence > Math.Max(0, total - count); sequence--)
+        for (int sequence = last; sequence >= first; sequence--)
         {
             token.ThrowIfCancellationRequested();
             var item = await FetchSummaryAsync($"FETCH {sequence}", token, sentFolder);
             if (item is not null) items.Add(item);
         }
-        return items;
+        return new MailPage(items, total, next);
+    }
+
+    internal static (int First, int Last, int Next) PageBounds(int total, int? beforeSequence, int count)
+    {
+        if (total < 0 || count < 1) throw new ArgumentOutOfRangeException(nameof(count));
+        int last = Math.Clamp(beforeSequence ?? total, 0, total);
+        int first = Math.Max(1, last - count + 1);
+        return (first, last, Math.Max(0, first - 1));
     }
 
     public async Task<IReadOnlyList<MailItem>> LoadSinceUidAsync(string folder, uint lastUid,
@@ -255,7 +268,11 @@ public sealed class ImapSession : IAsyncDisposable
         await CommandAsync($"RENAME {Quote(oldName)} {Quote(newName)}", token);
 
     public async Task<IReadOnlyList<MailItem>> SearchAsync(string folder, string query, int count = 100,
-        CancellationToken token = default, bool sentFolder = false)
+        CancellationToken token = default, bool sentFolder = false) =>
+        (await SearchPageAsync(folder, query, null, count, token, sentFolder)).Messages;
+
+    public async Task<MailSearchPage> SearchPageAsync(string folder, string query, int? beforeIndex = null,
+        int count = 50, CancellationToken token = default, bool sentFolder = false)
     {
         if (query.Length is < 1 or > 200) throw new ArgumentException("Search text must be between 1 and 200 characters.", nameof(query));
         await SelectAsync(folder, token);
@@ -271,14 +288,16 @@ public sealed class ImapSession : IAsyncDisposable
             foreach (string candidate in part.Line[8..].Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 if (uint.TryParse(candidate, out uint uid)) uids.Add(uid);
         }
+        uids.Sort();
+        var (first, last, next) = PageBounds(uids.Count, beforeIndex, count);
         var items = new List<MailItem>();
-        foreach (uint uid in uids.TakeLast(count).Reverse())
+        for (int index = last; index >= first; index--)
         {
             token.ThrowIfCancellationRequested();
-            var item = await FetchSummaryAsync($"UID FETCH {uid}", token, sentFolder);
+            var item = await FetchSummaryAsync($"UID FETCH {uids[index - 1]}", token, sentFolder);
             if (item is not null) items.Add(item);
         }
-        return items;
+        return new MailSearchPage(items, uids.Count, next);
     }
 
     private async Task<Response> SearchUtf8Async(string query, CancellationToken token)

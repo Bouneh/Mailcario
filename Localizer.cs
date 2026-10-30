@@ -328,6 +328,8 @@ public static class Localizer
         ["secureNote"] = ("IMAP : SSL/TLS · SMTP : STARTTLS", "IMAP: SSL/TLS · SMTP: STARTTLS"),
         ["connecting"] = ("Connexion en cours…", "Connecting…"),
         ["loading"] = ("Chargement des messages…", "Loading messages…"),
+        ["loadOlderMessages"] = ("Charger les messages précédents", "Load older messages"),
+        ["loadingOlderMessages"] = ("Chargement des messages précédents…", "Loading older messages…"),
         ["ready"] = ("Prêt", "Ready"),
         ["noMessages"] = ("Aucun message", "No messages"),
         ["noEvents"] = ("Aucune invitation dans les messages chargés", "No invitation in loaded messages"),

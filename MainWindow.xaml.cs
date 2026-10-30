@@ -43,6 +43,14 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _attemptedImages = new(StringComparer.Ordinal);
     private GridLength _savedMessageWidth = new(510);
     private CancellationTokenSource? _mailLoadCts;
+    private CancellationTokenSource? _olderLoadCts;
+    private int _nextOlderSequence;
+    private int _folderTotalCount;
+    private string? _loadedFolderAccount;
+    private string? _loadedFolderName;
+    private int _nextOlderSearchIndex;
+    private int _searchTotalCount;
+    private string? _loadedSearchQuery;
     private CancellationTokenSource? _searchCts;
     private readonly DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(450) };
     private CancellationTokenSource? _imageLoadCts;
@@ -68,6 +76,7 @@ public partial class MainWindow : Window
             Localizer.Changed -= ApplyLanguage;
             ThemeManager.Changed -= ApplyTheme;
             _mailLoadCts?.Cancel();
+            _olderLoadCts?.Cancel();
             _searchCts?.Cancel();
             _searchTimer.Stop();
             _imageLoadCts?.Cancel();
@@ -139,7 +148,7 @@ public partial class MainWindow : Window
         DeclineButton.Content = Localizer.T("decline");
         if (_selected is null) EmptyTitle.Text = Localizer.T("selectMail");
         EmptyDescription.Text = Localizer.T("emptyDescription");
-        CountLabel.Text = MessageCount(_visibleMessages.Count);
+        UpdatePaginationUi();
         MessageEmptyLabel.Text = Localizer.T("noMessages");
         UpdateImageNotices();
         if (_account is null) StatusLabel.Text = Localizer.T("statusConnect");
@@ -195,13 +204,19 @@ public partial class MainWindow : Window
     private void ResetMailbox()
     {
         _mailLoadCts?.Cancel();
+        _olderLoadCts?.Cancel();
         _searchCts?.Cancel();
         CancelImageLoad();
         _folder = "INBOX";
         _folderDelimiter = '/';
         _calendarLoaded = false;
         _messages = [];
+        _nextOlderSequence = 0;
+        _folderTotalCount = 0;
+        _loadedFolderAccount = _loadedFolderName = null;
         _searchResults = null;
+        _nextOlderSearchIndex = _searchTotalCount = 0;
+        _loadedSearchQuery = null;
         SearchBox.Clear();
         _visibleMessages.Clear();
         _allFolders = [];
@@ -212,11 +227,12 @@ public partial class MainWindow : Window
         ShowInbox();
     }
 
-    private async Task RefreshAsync(bool includeFolders = false)
+    private async Task RefreshAsync(bool includeFolders = false, bool preserveLoaded = false)
     {
         if (_offlineMode) { StatusLabel.Text = Localizer.T("offlineStatus"); return; }
         if (_account is null || _password is null) return;
         _mailLoadCts?.Cancel();
+        _olderLoadCts?.Cancel();
         var cts = new CancellationTokenSource();
         _mailLoadCts = cts;
         var account = _account;
@@ -239,13 +255,24 @@ public partial class MainWindow : Window
             }
             bool sentFolder = _allFolders.Any(value => value.IsSent && value.ServerName.Equals(folder,
                 StringComparison.OrdinalIgnoreCase));
-            var messages = await session.LoadRecentAsync(folder, token: cts.Token, sentFolder: sentFolder);
+            MailPage page = await session.LoadPageAsync(folder, token: cts.Token, sentFolder: sentFolder);
+            IReadOnlyList<MailItem> messages = page.Messages;
             string? ruleError = null;
             try { messages = await MailRuleStore.ApplyAsync(session, account.Email, folder, messages, cts.Token); }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) { ruleError = ex.Message; }
             if (cts.IsCancellationRequested || _account != account || _folder != folder) return;
+            bool sameFolder = preserveLoaded && string.Equals(_loadedFolderAccount, account.Email,
+                StringComparison.OrdinalIgnoreCase) && string.Equals(_loadedFolderName, folder,
+                StringComparison.OrdinalIgnoreCase);
+            if (sameFolder && _messages.Count > 0 && page.Messages.Count > 0)
+                messages = MergeRefreshedPage(messages, page.Messages, _messages);
             _messages = messages;
+            _folderTotalCount = page.TotalCount;
+            _nextOlderSequence = sameFolder
+                ? Math.Min(_nextOlderSequence, page.NextSequence) : page.NextSequence;
+            _loadedFolderAccount = account.Email;
+            _loadedFolderName = folder;
             SetAccountConnected(account.Email, true);
             if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
                 SetInboxUnreadCount(account.Email, await session.GetUnreadCountAsync("INBOX", cts.Token));
@@ -267,11 +294,114 @@ public partial class MainWindow : Window
             {
                 _mailLoadCts = null;
                 RefreshButton.IsEnabled = true;
+                UpdatePaginationUi();
             }
             _updatingFolders = false;
             cts.Dispose();
             EndSync();
         }
+    }
+
+    internal static IReadOnlyList<MailItem> MergeRefreshedPage(IReadOnlyList<MailItem> fresh,
+        IReadOnlyList<MailItem> fetched, IReadOnlyList<MailItem> previous)
+    {
+        if (fetched.Count == 0) return fresh;
+        uint oldestFreshUid = fetched.Min(item => item.Uid);
+        var freshUids = fresh.Select(item => item.Uid).ToHashSet();
+        return fresh.Concat(previous.Where(item => item.Uid < oldestFreshUid &&
+            !freshUids.Contains(item.Uid))).ToList();
+    }
+
+    private async Task LoadOlderMessagesAsync()
+    {
+        string? searchQuery = _loadedSearchQuery;
+        bool searchPage = _searchResults is not null && searchQuery == SearchBox.Text.Trim();
+        int before = searchPage ? _nextOlderSearchIndex : _nextOlderSequence;
+        if (_olderLoadCts is not null || _mailLoadCts is not null || before < 1 ||
+            (!searchPage && SearchBox.Text.Trim().Length > 0) ||
+            _offlineMode || _account is null || _password is null) return;
+        var cts = new CancellationTokenSource();
+        _olderLoadCts = cts;
+        var account = _account;
+        string folder = _folder;
+        LoadOlderButton.IsEnabled = false;
+        LoadOlderButton.Content = Localizer.T("loadingOlderMessages");
+        BeginSync(account.Email);
+        try
+        {
+            await using var session = await ImapSession.ConnectAsync(account, _password, cts.Token);
+            bool sentFolder = _allFolders.Any(value => value.IsSent && value.ServerName.Equals(folder,
+                StringComparison.OrdinalIgnoreCase));
+            if (searchPage)
+            {
+                MailSearchPage page = await session.SearchPageAsync(folder, searchQuery!, before,
+                    token: cts.Token, sentFolder: sentFolder);
+                if (cts.IsCancellationRequested || _account != account || _folder != folder ||
+                    _loadedSearchQuery != searchQuery || SearchBox.Text.Trim() != searchQuery) return;
+                var currentResults = _searchResults!;
+                var knownUids = currentResults.Select(item => item.Uid).ToHashSet();
+                _searchResults = currentResults.Concat(page.Messages.Where(item => knownUids.Add(item.Uid))).ToList();
+                _searchTotalCount = page.TotalCount;
+                _nextOlderSearchIndex = page.NextIndex;
+            }
+            else
+            {
+                MailPage page = await session.LoadPageAsync(folder, before, token: cts.Token, sentFolder: sentFolder);
+                IReadOnlyList<MailItem> older = page.Messages;
+                try { older = await MailRuleStore.ApplyAsync(session, account.Email, folder, older, cts.Token); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { StatusLabel.Text = Localizer.T("rules") + ": " + ex.Message; }
+                if (cts.IsCancellationRequested || _account != account || _folder != folder) return;
+                var knownUids = _messages.Select(item => item.Uid).ToHashSet();
+                _messages = _messages.Concat(older.Where(item => knownUids.Add(item.Uid))).ToList();
+                _folderTotalCount = page.TotalCount;
+                _nextOlderSequence = page.NextSequence;
+            }
+            SetAccountConnected(account.Email, true);
+            FilterMessages();
+            StatusLabel.Text = $"{(searchPage ? _searchResults!.Count : _messages.Count)} · {Localizer.T("ready")}";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (!cts.IsCancellationRequested)
+                StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message;
+        }
+        finally
+        {
+            if (_olderLoadCts == cts)
+            {
+                _olderLoadCts = null;
+                UpdatePaginationUi();
+            }
+            cts.Dispose();
+            EndSync();
+        }
+    }
+
+    private async void LoadOlderButton_Click(object sender, RoutedEventArgs e) => await LoadOlderMessagesAsync();
+
+    private async void MessageList_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.OriginalSource is not ScrollViewer || e.VerticalChange <= 0 ||
+            e.VerticalOffset < e.ExtentHeight - e.ViewportHeight - 3) return;
+        await LoadOlderMessagesAsync();
+    }
+
+    private void UpdatePaginationUi()
+    {
+        CountLabel.Text = MessageCount(_visibleMessages.Count);
+        if (_searchResults is not null && _loadedSearchQuery == SearchBox.Text.Trim() &&
+            _searchTotalCount > _searchResults.Count)
+            CountLabel.Text += $" · {_searchResults.Count}/{_searchTotalCount}";
+        else if (_folderTotalCount > _messages.Count && _searchResults is null)
+            CountLabel.Text += $" · {_messages.Count}/{_folderTotalCount}";
+        bool canLoad = !_offlineMode && (_searchResults is not null
+            ? _nextOlderSearchIndex > 0 && _loadedSearchQuery == SearchBox.Text.Trim()
+            : _nextOlderSequence > 0 && SearchBox.Text.Trim().Length == 0);
+        LoadOlderButton.Visibility = canLoad ? Visibility.Visible : Visibility.Collapsed;
+        LoadOlderButton.IsEnabled = canLoad && _olderLoadCts is null && _mailLoadCts is null;
+        if (_olderLoadCts is null) LoadOlderButton.Content = Localizer.T("loadOlderMessages");
     }
 
     private async Task RunSearchAsync()
@@ -282,6 +412,8 @@ public partial class MainWindow : Window
         if (query.Length == 0)
         {
             _searchResults = null;
+            _nextOlderSearchIndex = _searchTotalCount = 0;
+            _loadedSearchQuery = null;
             FilterMessages();
             return;
         }
@@ -298,11 +430,14 @@ public partial class MainWindow : Window
             await using var session = await ImapSession.ConnectAsync(account, _password, cts.Token);
             bool sentFolder = _allFolders.Any(value => value.IsSent && value.ServerName.Equals(folder,
                 StringComparison.OrdinalIgnoreCase));
-            var results = await session.SearchAsync(folder, query, token: cts.Token, sentFolder: sentFolder);
+            MailSearchPage page = await session.SearchPageAsync(folder, query, token: cts.Token, sentFolder: sentFolder);
             if (cts.IsCancellationRequested || _account != account || _folder != folder || SearchBox.Text.Trim() != query) return;
-            _searchResults = results;
+            _searchResults = page.Messages;
+            _searchTotalCount = page.TotalCount;
+            _nextOlderSearchIndex = page.NextIndex;
+            _loadedSearchQuery = query;
             FilterMessages();
-            StatusLabel.Text = MessageCount(results.Count);
+            StatusLabel.Text = MessageCount(page.TotalCount);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!cts.IsCancellationRequested) StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
@@ -345,7 +480,7 @@ public partial class MainWindow : Window
             if (!groupByDate) groups.Clear();
             else if (groups.Count == 0) groups.Add(new PropertyGroupDescription(nameof(MailItem.DayGroup)));
         }
-        CountLabel.Text = MessageCount(_visibleMessages.Count);
+        UpdatePaginationUi();
         MessageEmptyLabel.Visibility = _visibleMessages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -363,12 +498,12 @@ public partial class MainWindow : Window
     private void InsertIncomingInboxMessage(MailItem incoming)
     {
         if (_messages.Any(message => message.Uid == incoming.Uid)) return;
-        _messages = _messages.Prepend(incoming).Take(30).ToList();
+        _messages = _messages.Prepend(incoming).ToList();
         if (_searchResults is not null || (_unreadOnly && incoming.IsRead)) return;
         int position = SortMessages(_visibleMessages.Append(incoming)).ToList()
             .FindIndex(message => ReferenceEquals(message, incoming));
         _visibleMessages.Insert(Math.Max(0, position), incoming);
-        CountLabel.Text = MessageCount(_visibleMessages.Count);
+        UpdatePaginationUi();
         MessageEmptyLabel.Visibility = Visibility.Collapsed;
     }
 
@@ -800,6 +935,9 @@ public partial class MainWindow : Window
         if (!IsInitialized) return;
         _searchTimer.Stop();
         _searchCts?.Cancel();
+        _olderLoadCts?.Cancel();
+        _nextOlderSearchIndex = _searchTotalCount = 0;
+        _loadedSearchQuery = null;
         string query = SearchBox.Text.Trim();
         UpdateSearchHint();
         ClearSearchButton.Visibility = SearchBox.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;

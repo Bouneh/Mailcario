@@ -144,6 +144,8 @@ public sealed record InlineMailImage(string ContentType, byte[] Bytes)
 }
 
 public sealed record InboxSnapshot(uint UidValidity, MailItem? Latest, int UnreadCount);
+public sealed record MailPage(IReadOnlyList<MailItem> Messages, int TotalCount, int NextSequence);
+public sealed record MailSearchPage(IReadOnlyList<MailItem> Messages, int TotalCount, int NextIndex);
 
 public sealed class CalendarInvite
 {
