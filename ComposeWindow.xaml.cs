@@ -22,6 +22,9 @@ public partial class ComposeWindow : Window
     private MailPriority _priority = MailPriority.Normal;
     private string _activeTab = "message";
     private bool _sending;
+    private Paragraph? _signatureParagraph;
+    private Dictionary<DependencyProperty, object>? _formatPainter;
+    public string? SentCopyError { get; private set; }
 
     public ComposeWindow(MailAccount account, string password, string to = "", string subject = "", string body = "", string? replyToId = null)
     {
@@ -41,6 +44,9 @@ public partial class ComposeWindow : Window
         SubjectBox.Text = subject;
         BodyEditor.Document.Blocks.Clear();
         BodyEditor.Document.Blocks.Add(new Paragraph(new Run(body)));
+        MessageFontFamilyBox.SelectedIndex = 4;
+        MessageFontSizeBox.SelectedIndex = 3;
+        FontSizeBox.SelectedIndex = 2;
         Localizer.Changed += ApplyLanguage;
         Closed += (_, _) => Localizer.Changed -= ApplyLanguage;
         ApplyLanguage();
@@ -57,20 +63,51 @@ public partial class ComposeWindow : Window
         ComposeFormatTab.Content = Localizer.T("textFormat");
         ComposeReviewTab.Content = Localizer.T("review");
         ComposeCloseButton.Content = Localizer.T("close");
-        ComposeSendRibbon.Content = SendButton.Content = Localizer.T("send");
+        SendButton.Content = Localizer.T("send");
         ComposeAttachButton.Content = ComposeInsertAttachment.Content = Localizer.T("attachFile");
         ComposeSignatureButton.Content = ComposeInsertSignature.Content = Localizer.T("signature");
         ComposeEditSignature.Content = Localizer.T("editSignature");
+        ComposePasteButton.Content = Localizer.T("paste");
+        ComposeCutButton.Content = ComposeRibbonIcons.Labeled("cut", Localizer.T("cut"));
+        ComposeCopyButton.Content = ComposeRibbonIcons.Labeled("copy", Localizer.T("copy"));
+        ComposePainterButton.Content = ComposeRibbonIcons.Labeled("painter", Localizer.T("formatPainterShort"));
+        ComposePainterButton.ToolTip = Localizer.T("formatPainter");
+        ComposeClipboardCaption.Text = Localizer.T("clipboard");
+        ComposeTextCaption.Text = Localizer.T("simpleText");
+        ComposeNamesCaption.Text = Localizer.T("names");
+        ComposeAddressBook.Content = Localizer.T("addressBook");
+        ComposeCheckNames.Content = Localizer.T("checkNames");
+        ComposeGrowFont.ToolTip = Localizer.T("growFont");
+        ComposeShrinkFont.ToolTip = Localizer.T("shrinkFont");
+        ComposeGrowFont.Content = ComposeRibbonIcons.Create("grow");
+        ComposeShrinkFont.Content = ComposeRibbonIcons.Create("shrink");
+        ComposeBulletsButton.ToolTip = Localizer.T("bullets");
+        ComposeNumberingButton.ToolTip = Localizer.T("numbering");
+        ComposeClearFormat.ToolTip = Localizer.T("clearFormatting");
+        ComposeBulletsButton.Content = ComposeRibbonIcons.Create("bullets");
+        ComposeNumberingButton.Content = ComposeRibbonIcons.Create("numbering");
+        ComposeClearFormat.Content = ComposeRibbonIcons.Create("clear");
+        ComposeHighlightButton.ToolTip = Localizer.T("highlightColor");
+        ComposeFontColorButton.ToolTip = Localizer.T("fontColor");
+        ComposeHighlightDropDownButton.ToolTip = Localizer.T("highlightColor");
+        ComposeFontColorDropDownButton.ToolTip = Localizer.T("fontColor");
+        UpdateColorButtons();
+        ComposeAlignLeft.ToolTip = Localizer.T("alignLeft");
+        ComposeAlignCenter.ToolTip = Localizer.T("alignCenter");
+        ComposeAlignRight.ToolTip = Localizer.T("alignRight");
+        ComposeAlignJustify.ToolTip = Localizer.T("alignJustify");
+        ComposeOutdent.ToolTip = Localizer.T("decreaseIndent");
+        ComposeIndent.ToolTip = Localizer.T("increaseIndent");
         DropHint.Text = Localizer.T("dropAttachments");
-        ComposeBoldButton.Content = ComposeFormatBold.Content = Localizer.T("bold");
-        ComposeItalicButton.Content = ComposeFormatItalic.Content = Localizer.T("italic");
-        ComposeUnderlineButton.Content = ComposeFormatUnderline.Content = Localizer.T("underline");
+        ComposeBoldButton.ToolTip = ComposeFormatBold.Content = Localizer.T("bold");
+        ComposeItalicButton.ToolTip = ComposeFormatItalic.Content = Localizer.T("italic");
+        ComposeUnderlineButton.ToolTip = ComposeFormatUnderline.Content = Localizer.T("underline");
         ComposeFormatBullets.Content = Localizer.T("bullets");
         ComposeFormatLeft.Content = Localizer.T("alignLeft");
         ComposeFormatCenter.Content = Localizer.T("alignCenter");
         ComposeFormatRight.Content = Localizer.T("alignRight");
-        ComposeHighButton.Content = ComposeOptionsHigh.Content = Localizer.T("importanceHigh");
-        ComposeLowButton.Content = ComposeOptionsLow.Content = Localizer.T("importanceLow");
+        ComposeOptionsHigh.Content = Localizer.T("importanceHigh");
+        ComposeOptionsLow.Content = Localizer.T("importanceLow");
         ComposeBccButton.Content = Localizer.T("showBcc");
         ReadReceiptCheck.Content = Localizer.T("readReceipt");
         SpellCheckBox.Content = Localizer.T("spellCheck");
@@ -187,36 +224,121 @@ public partial class ComposeWindow : Window
 
     private void SignatureButton_Click(object sender, RoutedEventArgs e)
     {
-        var signatures = SignatureStore.List(_account.Email);
+        var signatures = SignatureStore.ListAll()
+            .OrderBy(choice => !choice.AccountEmail.Equals(_account.Email, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(choice => choice.AccountEmail, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(choice => choice.Signature.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
         if (signatures.Count == 0)
         {
             OpenSignatureManager();
             return;
         }
-        var menu = new ContextMenu { PlacementTarget = sender as Button, Placement = PlacementMode.Bottom };
-        foreach (SignatureEntry signature in signatures)
+        CreateSignatureMenu(sender as Button, signatures).IsOpen = true;
+    }
+
+    private ContextMenu CreateSignatureMenu(Button? target, IReadOnlyList<SignatureChoice> signatures)
+    {
+        var menu = new ContextMenu { PlacementTarget = target, Placement = PlacementMode.Bottom,
+            Style = (Style)FindResource("MailMessageContextMenuStyle"), MinWidth = 290, MaxHeight = 430 };
+        var none = new MenuItem { Header = Localizer.T("noSignature"),
+            Style = (Style)FindResource("MailMessageMenuItemStyle"),
+            Icon = new TextBlock { Text = "\uE711", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+                Foreground = (Brush)FindResource("Muted"), FontSize = 17 } };
+        none.Click += (_, _) => ClearSignature();
+        menu.Items.Add(none);
+        menu.Items.Add(new Separator { Style = (Style)FindResource("MailMessageSeparatorStyle") });
+        foreach (SignatureChoice choice in signatures)
         {
-            var item = new MenuItem { Header = signature.Name };
-            item.Click += (_, _) => InsertSignature(signature.Text);
+            var title = new StackPanel();
+            title.Children.Add(new TextBlock { Text = choice.Signature.Name,
+                FontWeight = FontWeights.SemiBold, Foreground = (Brush)FindResource("Ink") });
+            title.Children.Add(new TextBlock { Text = choice.AccountEmail, FontSize = 10,
+                Foreground = (Brush)FindResource("Muted") });
+            var item = new MenuItem { Header = title, Style = (Style)FindResource("MailMessageMenuItemStyle"),
+                Icon = new TextBlock { Text = "\uE8D4", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+                    Foreground = (Brush)FindResource("IconFolder"), FontSize = 17 } };
+            item.Click += (_, _) => InsertSignature(choice.Signature.Text);
             menu.Items.Add(item);
         }
-        menu.Items.Add(new Separator());
-        var manage = new MenuItem { Header = Localizer.T("manageSignatures") };
+        menu.Items.Add(new Separator { Style = (Style)FindResource("MailMessageSeparatorStyle") });
+        var manage = new MenuItem { Header = Localizer.T("manageSignatures"),
+            Style = (Style)FindResource("MailMessageMenuItemStyle"),
+            Icon = new TextBlock { Text = "\uE70F", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+                Foreground = (Brush)FindResource("IconFolder"), FontSize = 17 } };
         manage.Click += (_, _) => OpenSignatureManager();
         menu.Items.Add(manage);
-        menu.IsOpen = true;
+        return menu;
     }
 
     private void InsertSignature(string signature)
     {
-        if (signature.Length == 0) return;
+        if (signature.Length == 0) { ClearSignature(); return; }
+        if (_signatureParagraph is null || !BodyEditor.Document.Blocks.Contains(_signatureParagraph))
+        {
+            _signatureParagraph = new Paragraph { Margin = new Thickness(0, 10, 0, 0) };
+            BodyEditor.Document.Blocks.Add(_signatureParagraph);
+        }
+        _signatureParagraph.Inlines.Clear();
+        string[] lines = signature.Replace("\r\n", "\n").Split('\n');
+        for (int index = 0; index < lines.Length; index++)
+        {
+            if (index > 0) _signatureParagraph.Inlines.Add(new LineBreak());
+            _signatureParagraph.Inlines.Add(new Run(lines[index]));
+        }
+        BodyEditor.CaretPosition = _signatureParagraph.ContentEnd;
         BodyEditor.Focus();
-        BodyEditor.Selection.Text = "\n\n" + signature;
+    }
+
+    private void ClearSignature()
+    {
+        if (_signatureParagraph is not null && BodyEditor.Document.Blocks.Contains(_signatureParagraph))
+            BodyEditor.Document.Blocks.Remove(_signatureParagraph);
+        _signatureParagraph = null;
+        BodyEditor.Focus();
     }
 
     private void OpenSignatureManager() => new SignaturesWindow(_account.Email) { Owner = this }.ShowDialog();
 
     private void EditSignatureButton_Click(object sender, RoutedEventArgs e) => OpenSignatureManager();
+
+    private void AddressBookButton_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ContactsWindow { Owner = this };
+        if (window.ShowDialog() != true || window.PickedEmail is null) return;
+        TextBox target = window.AddToCc ? CcBox : ToBox;
+        string[] existing = target.Text.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (!existing.Contains(window.PickedEmail, StringComparer.OrdinalIgnoreCase))
+            target.Text = target.Text.Trim().Length == 0 ? window.PickedEmail :
+                target.Text.TrimEnd(' ', ',', ';') + "; " + window.PickedEmail;
+        target.Focus();
+        target.CaretIndex = target.Text.Length;
+    }
+
+    private void CheckNamesButton_Click(object sender, RoutedEventArgs e)
+    {
+        var contacts = ContactStore.Load();
+        foreach (TextBox field in new[] { ToBox, CcBox, BccBox })
+        {
+            var verified = new List<string>();
+            foreach (string item in field.Text.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                string candidate = contacts.FirstOrDefault(contact =>
+                    contact.Name.Equals(item, StringComparison.CurrentCultureIgnoreCase))?.Email ?? item;
+                try { verified.Add(new MailAddress(candidate).Address); }
+                catch (Exception ex) when (ex is FormatException or ArgumentException)
+                {
+                    StatusLabel.Foreground = (Brush)FindResource("ErrorText");
+                    StatusLabel.Text = string.Format(Localizer.T("invalidRecipient"), item);
+                    field.Focus(); field.SelectAll();
+                    return;
+                }
+            }
+            field.Text = string.Join("; ", verified);
+        }
+        StatusLabel.Foreground = (Brush)FindResource("AccentDark");
+        StatusLabel.Text = Localizer.T("namesVerified");
+    }
 
     private void BccButton_Click(object sender, RoutedEventArgs e)
     {
@@ -239,19 +361,86 @@ public partial class ComposeWindow : Window
 
     private void UpdateImportance()
     {
-        foreach (Button button in new[] { ComposeHighButton, ComposeOptionsHigh })
-            button.Background = _priority == MailPriority.High ? (Brush)FindResource("AccentSoft") : Brushes.Transparent;
-        foreach (Button button in new[] { ComposeLowButton, ComposeOptionsLow })
-            button.Background = _priority == MailPriority.Low ? (Brush)FindResource("AccentSoft") : Brushes.Transparent;
+        ComposeOptionsHigh.Background = _priority == MailPriority.High ? (Brush)FindResource("AccentSoft") : Brushes.Transparent;
+        ComposeOptionsLow.Background = _priority == MailPriority.Low ? (Brush)FindResource("AccentSoft") : Brushes.Transparent;
     }
 
     private void BoldButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.ToggleBold);
     private void ItalicButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.ToggleItalic);
     private void UnderlineButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.ToggleUnderline);
     private void BulletsButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.ToggleBullets);
+    private void NumberingButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.ToggleNumbering);
     private void AlignLeftButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.AlignLeft);
     private void AlignCenterButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.AlignCenter);
     private void AlignRightButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.AlignRight);
+    private void AlignJustifyButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(EditingCommands.AlignJustify);
+    private void PasteButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(ApplicationCommands.Paste);
+    private void CutButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(ApplicationCommands.Cut);
+    private void CopyButton_Click(object sender, RoutedEventArgs e) => ExecuteEditorCommand(ApplicationCommands.Copy);
+
+    private void GrowFontButton_Click(object sender, RoutedEventArgs e) => ChangeFontSize(2);
+    private void ShrinkFontButton_Click(object sender, RoutedEventArgs e) => ChangeFontSize(-2);
+
+    private void ChangeFontSize(int delta)
+    {
+        object selected = BodyEditor.Selection.GetPropertyValue(TextElement.FontSizeProperty);
+        double current = selected is double size ? size : BodyEditor.FontSize;
+        BodyEditor.Selection.ApplyPropertyValue(TextElement.FontSizeProperty, Math.Clamp(current + delta, 8, 72));
+        BodyEditor.Focus();
+    }
+
+    private void ClearFormatButton_Click(object sender, RoutedEventArgs e)
+    {
+        BodyEditor.Selection.ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Normal);
+        BodyEditor.Selection.ApplyPropertyValue(TextElement.FontStyleProperty, FontStyles.Normal);
+        BodyEditor.Selection.ApplyPropertyValue(Inline.TextDecorationsProperty, new TextDecorationCollection());
+        BodyEditor.Selection.ApplyPropertyValue(TextElement.FontFamilyProperty, new FontFamily("Segoe UI"));
+        BodyEditor.Selection.ApplyPropertyValue(TextElement.FontSizeProperty, 14d);
+        BodyEditor.Selection.ApplyPropertyValue(TextElement.ForegroundProperty, (Brush)FindResource("Ink"));
+        BodyEditor.Selection.ApplyPropertyValue(TextElement.BackgroundProperty, Brushes.Transparent);
+        BodyEditor.Focus();
+    }
+
+    private void IndentButton_Click(object sender, RoutedEventArgs e) => ChangeIndent(24);
+    private void OutdentButton_Click(object sender, RoutedEventArgs e) => ChangeIndent(-24);
+
+    private void ChangeIndent(int delta)
+    {
+        foreach (Paragraph paragraph in BodyEditor.Document.Blocks.OfType<Paragraph>()
+            .Where(paragraph => paragraph.ContentEnd.CompareTo(BodyEditor.Selection.Start) >= 0 &&
+                                paragraph.ContentStart.CompareTo(BodyEditor.Selection.End) <= 0))
+            paragraph.Margin = new Thickness(Math.Max(0, paragraph.Margin.Left + delta),
+                paragraph.Margin.Top, paragraph.Margin.Right, paragraph.Margin.Bottom);
+        BodyEditor.Focus();
+    }
+
+    private void FormatPainterButton_Click(object sender, RoutedEventArgs e)
+    {
+        DependencyProperty[] properties = [TextElement.FontFamilyProperty, TextElement.FontSizeProperty,
+            TextElement.FontWeightProperty, TextElement.FontStyleProperty, TextElement.ForegroundProperty,
+            TextElement.BackgroundProperty, Inline.TextDecorationsProperty];
+        _formatPainter = properties.ToDictionary(property => property, property =>
+        {
+            object value = BodyEditor.Selection.GetPropertyValue(property);
+            if (value != DependencyProperty.UnsetValue && value is not null) return value;
+            if (property == Inline.TextDecorationsProperty) return new TextDecorationCollection();
+            if (property == TextElement.BackgroundProperty) return Brushes.Transparent;
+            return BodyEditor.GetValue(property) ?? DependencyProperty.UnsetValue;
+        });
+        StatusLabel.Foreground = (Brush)FindResource("AccentDark");
+        StatusLabel.Text = Localizer.T("selectFormatTarget");
+        BodyEditor.Focus();
+    }
+
+    private void BodyEditor_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (_formatPainter is null || BodyEditor.Selection.IsEmpty) return;
+        var formatting = _formatPainter;
+        _formatPainter = null;
+        foreach (var (property, value) in formatting)
+            if (value != DependencyProperty.UnsetValue) BodyEditor.Selection.ApplyPropertyValue(property, value);
+        StatusLabel.Text = "";
+    }
 
     private void ExecuteEditorCommand(RoutedCommand command)
     {
@@ -261,9 +450,17 @@ public partial class ComposeWindow : Window
 
     private void FontSizeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsInitialized || FontSizeBox.SelectedItem is not ComboBoxItem selected ||
+        if (!IsInitialized || sender is not ComboBox { SelectedItem: ComboBoxItem selected } ||
             !double.TryParse(selected.Content?.ToString(), out double size)) return;
         BodyEditor.Selection.ApplyPropertyValue(TextElement.FontSizeProperty, size);
+        BodyEditor.Focus();
+    }
+
+    private void FontFamilyBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsInitialized || MessageFontFamilyBox.SelectedItem is not ComboBoxItem selected) return;
+        BodyEditor.Selection.ApplyPropertyValue(TextElement.FontFamilyProperty,
+            new FontFamily(selected.Content?.ToString() ?? "Segoe UI"));
         BodyEditor.Focus();
     }
 
@@ -275,6 +472,7 @@ public partial class ComposeWindow : Window
     private async void SendButton_Click(object sender, RoutedEventArgs e)
     {
         if (_sending) return;
+        StatusLabel.Foreground = (Brush)FindResource("ErrorText");
         StatusLabel.Text = "";
         if (string.IsNullOrWhiteSpace(ToBox.Text))
         {
@@ -288,7 +486,7 @@ public partial class ComposeWindow : Window
             return;
         }
         _sending = true;
-        SendButton.IsEnabled = ComposeSendRibbon.IsEnabled = false;
+        SendButton.IsEnabled = false;
         try
         {
             string plain = new TextRange(BodyEditor.Document.ContentStart, BodyEditor.Document.ContentEnd).Text.TrimEnd('\r', '\n');
@@ -300,7 +498,8 @@ public partial class ComposeWindow : Window
             mail.Priority = _priority;
             if (ReadReceiptCheck.IsChecked == true) mail.Headers.Add("Disposition-Notification-To", _account.Email);
             foreach (string path in _attachmentPaths) mail.Attachments.Add(new Attachment(path));
-            await SmtpService.SendAsync(_account, _password, mail);
+            var result = await SmtpService.SendAndSaveAsync(_account, _password, mail);
+            SentCopyError = result.CopyError;
             DialogResult = true;
         }
         catch (Exception ex)
@@ -310,7 +509,7 @@ public partial class ComposeWindow : Window
         finally
         {
             _sending = false;
-            SendButton.IsEnabled = ComposeSendRibbon.IsEnabled = true;
+            SendButton.IsEnabled = true;
         }
     }
 

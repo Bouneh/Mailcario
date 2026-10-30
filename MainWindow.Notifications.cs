@@ -5,6 +5,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shell;
 using System.Windows.Threading;
 using System.Text.RegularExpressions;
+using System.Windows.Controls;
+using System.Globalization;
 
 namespace Mailcario;
 
@@ -17,17 +19,18 @@ public partial class MainWindow
     private bool _monitorRunning;
     private bool _offlineMode;
     private readonly HashSet<string> _connectedAccounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _connectionErrors = new(StringComparer.OrdinalIgnoreCase);
     private int _activeSyncOperations;
     private string? _lastNotifiedAccount;
     private DateTimeOffset? _lastSuccessfulSync;
-    private static readonly ImageSource MailBadge = CreateMailBadge();
+    private readonly Dictionary<string, int> _unreadInboxCounts = new(StringComparer.OrdinalIgnoreCase);
+    private int _displayedUnreadCount = -1;
+    private int _unreadInboxTotal;
 
     private void InitializeNotifications()
     {
         InitializeTrayEvents();
         TaskbarItemInfo = new TaskbarItemInfo();
-        Activated += (_, _) => ClearMailBadge();
-        PreviewMouseDown += (_, _) => ClearMailBadge();
         _mailTimer.Tick += async (_, _) => await PollAllAccountsAsync();
         Closed += (_, _) =>
         {
@@ -62,14 +65,19 @@ public partial class MainWindow
         UpdateConnectionStatus();
     }
 
-    private void SetAccountConnected(string email, bool connected)
+    private void SetAccountConnected(string email, bool connected, string? reason = null)
     {
         if (connected)
         {
             _connectedAccounts.Add(email);
+            _connectionErrors.Remove(email);
             _lastSuccessfulSync = DateTimeOffset.Now;
         }
-        else _connectedAccounts.Remove(email);
+        else
+        {
+            _connectedAccounts.Remove(email);
+            if (!string.IsNullOrWhiteSpace(reason)) _connectionErrors[email] = reason;
+        }
         UpdateConnectionStatus();
     }
 
@@ -84,6 +92,42 @@ public partial class MainWindow
             online == total ? (Brush)FindResource("Accent") : (Brush)FindResource("ErrorText");
         ConnectionStatusText.ToolTip = string.Join("\n", _accounts.Select(a =>
             a.Email + " — " + Localizer.T(_connectedAccounts.Contains(a.Email) ? "connected" : "disconnected")));
+        if (ConnectionDetailsPopup.IsOpen) UpdateConnectionDetails();
+    }
+
+    private void ConnectionStatusButton_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateConnectionDetails();
+        ConnectionDetailsPopup.IsOpen = !ConnectionDetailsPopup.IsOpen;
+    }
+
+    private void UpdateConnectionDetails()
+    {
+        ConnectionDetailsPanel.Children.Clear();
+        ConnectionDetailsPanel.Children.Add(new TextBlock
+        {
+            Text = Localizer.T("connectionDetails"), FontSize = 14, FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("Ink"), Margin = new Thickness(0, 0, 0, 10)
+        });
+        if (_accounts.Count == 0)
+        {
+            ConnectionDetailsPanel.Children.Add(new TextBlock { Text = Localizer.T("noAccounts"),
+                Foreground = (Brush)FindResource("Muted") });
+            return;
+        }
+        foreach (MailAccount account in _accounts)
+        {
+            bool connected = _connectedAccounts.Contains(account.Email) && !_offlineMode;
+            var entry = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+            entry.Children.Add(new TextBlock { Text = account.Email, FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)FindResource("Ink"), TextTrimming = TextTrimming.CharacterEllipsis });
+            string detail = connected ? Localizer.T("connected") : _offlineMode
+                ? Localizer.T("offlineStatus") : _connectionErrors.TryGetValue(account.Email, out string? error)
+                ? Localizer.T("disconnected") + " — " + error : Localizer.T("connectionPending");
+            entry.Children.Add(new TextBlock { Text = detail, Foreground = (Brush)FindResource(connected ? "Accent" : "Muted"),
+                TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 3, 0, 0) });
+            ConnectionDetailsPanel.Children.Add(entry);
+        }
     }
 
     private async Task PollAllAccountsAsync()
@@ -100,12 +144,13 @@ public partial class MainWindow
                 SyncStatusText.Text = Localizer.T("syncing") + " " + account.Email;
                 _monitorCancellation.Token.ThrowIfCancellationRequested();
                 string? password = AccountStore.LoadPassword(account.Email);
-                if (password is null) { SetAccountConnected(account.Email, false); continue; }
+                if (password is null) { SetAccountConnected(account.Email, false, Localizer.T("accountCredentialsMissing")); continue; }
                 try
                 {
                     await using var session = await ImapSession.ConnectAsync(account, password, _monitorCancellation.Token);
                     InboxSnapshot snapshot = await session.GetInboxSnapshotAsync(_monitorCancellation.Token);
                     SetAccountConnected(account.Email, true);
+                    SetInboxUnreadCount(account.Email, snapshot.UnreadCount);
                     if (ObserveInbox(account.Email, snapshot.UidValidity, snapshot.Latest) && snapshot.Latest is not null)
                     {
                         bool activeInbox = IsActiveInbox(account.Email);
@@ -115,7 +160,7 @@ public partial class MainWindow
                     }
                 }
                 catch (OperationCanceledException) { throw; }
-                catch (Exception) { SetAccountConnected(account.Email, false); }
+                catch (Exception ex) { SetAccountConnected(account.Email, false, ex.Message); }
             }
         }
         catch (OperationCanceledException) { }
@@ -178,8 +223,6 @@ public partial class MainWindow
     private void NotifyNewMail(string email, MailItem item, string preview)
     {
         _lastNotifiedAccount = email;
-        TaskbarItemInfo.Overlay = MailBadge;
-        SetMailAttention(true);
         string detail = _settings.ShowMessagePreview
             ? $"{item.SenderName} · {item.Subject}" + (preview.Length > 0 ? "\n" + preview : "")
             : Localizer.T("newMailNotification");
@@ -191,7 +234,6 @@ public partial class MainWindow
         Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
-        ClearMailBadge();
     }
 
     private async void OpenFromNewMailNotice()
@@ -209,25 +251,44 @@ public partial class MainWindow
         await NavigateToInboxAsync();
     }
 
-    private void ClearMailBadge()
+    private void SetInboxUnreadCount(string email, int count)
     {
-        if (TaskbarItemInfo is not null) TaskbarItemInfo.Overlay = null;
-        SetMailAttention(false);
+        if (!_accounts.Any(account => account.Email.Equals(email, StringComparison.OrdinalIgnoreCase))) return;
+        _unreadInboxCounts[email] = Math.Max(0, count);
+        UpdateUnreadBadge();
     }
 
-    private static ImageSource CreateMailBadge()
+    private void UpdateUnreadBadge()
+    {
+        int total = _accounts.Sum(account => _unreadInboxCounts.GetValueOrDefault(account.Email));
+        if (total == _displayedUnreadCount) return;
+        _displayedUnreadCount = total;
+        _unreadInboxTotal = total;
+        if (TaskbarItemInfo is not null)
+        {
+            TaskbarItemInfo.Overlay = total > 0 ? CreateMailBadge(total) : null;
+            TaskbarItemInfo.Description = total > 0
+                ? string.Format(Localizer.T("unreadInboxCount"), total) : "Mailcario";
+        }
+        SetMailAttention(total > 0);
+    }
+
+    private static ImageSource CreateMailBadge(int count)
     {
         var visual = new DrawingVisual();
         using (DrawingContext drawing = visual.RenderOpen())
         {
-            drawing.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(67, 142, 199)),
-                new Pen(Brushes.White, 0.8), new Rect(0.5, 0.5, 15, 15), 4, 4);
-            var white = new Pen(Brushes.White, 1.5);
-            drawing.DrawRectangle(null, white, new Rect(3, 5, 10, 6));
-            drawing.DrawLine(white, new Point(3, 5), new Point(8, 8.5));
-            drawing.DrawLine(white, new Point(13, 5), new Point(8, 8.5));
+            // Windows scales taskbar overlays down to roughly 16 px. The Mailcario icon already
+            // depicts an envelope, so the overlay uses its whole area for a readable count.
+            drawing.DrawEllipse(new SolidColorBrush(Color.FromRgb(47, 111, 166)),
+                new Pen(Brushes.White, 3), new Point(32, 32), 30, 30);
+            string label = count > 99 ? "99+" : count.ToString(CultureInfo.InvariantCulture);
+            var number = new FormattedText(label, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                label.Length > 2 ? 23 : label.Length > 1 ? 31 : 40, Brushes.White, 1);
+            drawing.DrawText(number, new Point(32 - number.Width / 2, 31 - number.Height / 2));
         }
-        var image = new RenderTargetBitmap(16, 16, 96, 96, PixelFormats.Pbgra32);
+        var image = new RenderTargetBitmap(64, 64, 96, 96, PixelFormats.Pbgra32);
         image.Render(visual);
         image.Freeze();
         return image;

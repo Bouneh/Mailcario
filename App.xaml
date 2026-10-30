@@ -1,4 +1,4 @@
-<Application x:Class="Mailcario.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" StartupUri="MainWindow.xaml">
+<Application x:Class="Mailcario.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Application.Resources>
     <SolidColorBrush x:Key="Accent" Color="#438EC7"/>
     <SolidColorBrush x:Key="AccentDark" Color="#85C6F5"/>
@@ -307,7 +307,7 @@
                 </Grid>
               </ToggleButton>
               <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False" IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Fade">
-                <Border Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="220">
+                <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="7" Padding="4" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="260">
                   <ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsPresenter/></ScrollViewer>
                 </Border>
               </Popup>
@@ -318,8 +318,22 @@
     </Style>
     <Style TargetType="ComboBoxItem">
       <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
-      <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
-      <Setter Property="Padding" Value="9,6"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="9,7"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBoxItem">
+            <Border x:Name="ItemChrome" Background="{TemplateBinding Background}" CornerRadius="4" Margin="2,1" Padding="{TemplateBinding Padding}">
+              <ContentPresenter ContentSource="Content" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemChrome" Property="Background" Value="{DynamicResource AccentSoft}"/></Trigger>
+              <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemChrome" Property="Background" Value="{DynamicResource AccentSoft}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
   </Application.Resources>
 </Application>

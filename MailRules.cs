@@ -53,6 +53,13 @@ public static class MailRuleStore
         File.Move(temporary, PathName, true);
     }
 
+    public static void RemoveAccount(string email)
+    {
+        var rules = Load();
+        if (rules.RemoveAll(rule => rule.AccountEmail.Equals(email, StringComparison.OrdinalIgnoreCase)) > 0)
+            Save(rules);
+    }
+
     public static async Task<IReadOnlyList<MailItem>> ApplyAsync(ImapSession session,
         string accountEmail, string folder, IReadOnlyList<MailItem> messages, CancellationToken token)
     {

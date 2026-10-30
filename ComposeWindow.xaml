@@ -6,8 +6,43 @@
         WindowStartupLocation="CenterOwner" Background="{DynamicResource Canvas}"
         AllowDrop="True" PreviewDragOver="ComposeWindow_PreviewDragOver" PreviewDrop="ComposeWindow_PreviewDrop"
         FontFamily="Segoe UI" FontSize="13">
+  <Window.Resources>
+    <Style x:Key="ComposeRibbonSmallButton" TargetType="Button" BasedOn="{StaticResource ChromeButton}">
+      <Setter Property="Width" Value="29"/><Setter Property="Height" Value="27"/>
+      <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="1,0"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="FontSize" Value="14"/>
+    </Style>
+    <Style x:Key="ComposeRibbonRowButton" TargetType="Button" BasedOn="{StaticResource ChromeButton}">
+      <Setter Property="Height" Value="25"/><Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Padding" Value="6,1"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="FontSize" Value="11"/>
+    </Style>
+    <Style x:Key="ComposeColorSwatchButton" TargetType="Button">
+      <Setter Property="Width" Value="23"/><Setter Property="Height" Value="23"/>
+      <Setter Property="Margin" Value="1"/><Setter Property="Padding" Value="0"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Swatch" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"/>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Swatch" Property="BorderBrush" Value="{DynamicResource AccentDark}"/>
+                <Setter TargetName="Swatch" Property="BorderThickness" Value="2"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.28"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
   <Grid>
-    <Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="104"/><RowDefinition Height="*"/><RowDefinition Height="34"/></Grid.RowDefinitions>
+    <Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="120"/><RowDefinition Height="*"/><RowDefinition Height="34"/></Grid.RowDefinitions>
     <Border Grid.Row="0" Background="{DynamicResource TitleBar}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1">
       <StackPanel Orientation="Horizontal">
         <Button x:Name="ComposeFileTab" Click="ComposeTab_Click" Tag="file" Style="{StaticResource RibbonTabButton}"/>
@@ -18,23 +53,81 @@
         <Button x:Name="ComposeReviewTab" Click="ComposeTab_Click" Tag="review" Style="{StaticResource RibbonTabButton}"/>
       </StackPanel>
     </Border>
-    <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1" Padding="14,5">
+    <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1" Padding="10,4">
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
       <Grid>
         <StackPanel x:Name="ComposeFileRibbon" Orientation="Horizontal" Visibility="Collapsed">
           <Button x:Name="ComposeCloseButton" Click="CancelButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8BB;" BorderBrush="{DynamicResource IconNeutral}"/>
         </StackPanel>
         <StackPanel x:Name="ComposeMessageRibbon" Orientation="Horizontal">
-          <Button x:Name="ComposeSendRibbon" Click="SendButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE724;" BorderBrush="{DynamicResource IconMail}" MinWidth="83"/>
-          <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="4,4,10,4"/>
+          <Grid Width="159">
+            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="16"/></Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Button x:Name="ComposePasteButton" Click="PasteButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE77F;" BorderBrush="{DynamicResource IconFolder}" Width="57" Height="78" MinWidth="57"/>
+              <StackPanel Width="100" VerticalAlignment="Center">
+                <Button x:Name="ComposeCutButton" Click="CutButton_Click" Style="{StaticResource ComposeRibbonRowButton}"/>
+                <Button x:Name="ComposeCopyButton" Click="CopyButton_Click" Style="{StaticResource ComposeRibbonRowButton}"/>
+                <Button x:Name="ComposePainterButton" Click="FormatPainterButton_Click" Style="{StaticResource ComposeRibbonRowButton}"/>
+              </StackPanel>
+            </StackPanel>
+            <TextBlock x:Name="ComposeClipboardCaption" Grid.Row="1" FontSize="10" Foreground="{DynamicResource Muted}" TextAlignment="Center"/>
+          </Grid>
+          <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="4,5,8,5"/>
+          <Grid Width="410">
+            <Grid.RowDefinitions><RowDefinition Height="35"/><RowDefinition Height="35"/><RowDefinition Height="16"/></Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <ComboBox x:Name="MessageFontFamilyBox" Width="145" Height="29" SelectionChanged="FontFamilyBox_SelectionChanged">
+                <ComboBoxItem Content="Aptos"/><ComboBoxItem Content="Arial"/><ComboBoxItem Content="Calibri"/>
+                <ComboBoxItem Content="Georgia"/><ComboBoxItem Content="Segoe UI"/><ComboBoxItem Content="Times New Roman"/>
+                <ComboBoxItem Content="Verdana"/>
+              </ComboBox>
+              <ComboBox x:Name="MessageFontSizeBox" Width="61" Height="29" Margin="4,0,5,0" SelectionChanged="FontSizeBox_SelectionChanged">
+                <ComboBoxItem Content="10"/><ComboBoxItem Content="11"/><ComboBoxItem Content="12"/><ComboBoxItem Content="14"/>
+                <ComboBoxItem Content="16"/><ComboBoxItem Content="18"/><ComboBoxItem Content="24"/><ComboBoxItem Content="36"/>
+              </ComboBox>
+              <Button x:Name="ComposeGrowFont" Click="GrowFontButton_Click" Style="{StaticResource ComposeRibbonSmallButton}"/>
+              <Button x:Name="ComposeShrinkFont" Click="ShrinkFontButton_Click" Style="{StaticResource ComposeRibbonSmallButton}"/>
+              <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="5,2"/>
+              <Button x:Name="ComposeBulletsButton" Click="BulletsButton_Click" Style="{StaticResource ComposeRibbonSmallButton}"/>
+              <Button x:Name="ComposeNumberingButton" Click="NumberingButton_Click" Style="{StaticResource ComposeRibbonSmallButton}"/>
+              <Button x:Name="ComposeClearFormat" Click="ClearFormatButton_Click" Style="{StaticResource ComposeRibbonSmallButton}"/>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button x:Name="ComposeBoldButton" Click="BoldButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Content="B" FontWeight="Bold"/>
+              <Button x:Name="ComposeItalicButton" Click="ItalicButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Content="I" FontStyle="Italic"/>
+              <Button x:Name="ComposeUnderlineButton" Click="UnderlineButton_Click" Style="{StaticResource ComposeRibbonSmallButton}"><TextBlock Text="U" TextDecorations="Underline"/></Button>
+              <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="5,2"/>
+              <StackPanel Orientation="Horizontal">
+                <Button x:Name="ComposeHighlightButton" Click="ApplyHighlightColorButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Width="25"/>
+                <Button x:Name="ComposeHighlightDropDownButton" Click="HighlightButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Width="12" Margin="0" Content="⌄" FontSize="11"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <Button x:Name="ComposeFontColorButton" Click="ApplyFontColorButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Width="25"/>
+                <Button x:Name="ComposeFontColorDropDownButton" Click="FontColorButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Width="12" Margin="0" Content="⌄" FontSize="11"/>
+              </StackPanel>
+              <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="5,2"/>
+              <Button x:Name="ComposeAlignLeft" Click="AlignLeftButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Content="☷"/>
+              <Button x:Name="ComposeAlignCenter" Click="AlignCenterButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Content="≡"/>
+              <Button x:Name="ComposeAlignRight" Click="AlignRightButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Content="☰"/>
+              <Button x:Name="ComposeAlignJustify" Click="AlignJustifyButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Content="▤"/>
+              <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="5,2"/>
+              <Button x:Name="ComposeOutdent" Click="OutdentButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Content="⇤"/>
+              <Button x:Name="ComposeIndent" Click="IndentButton_Click" Style="{StaticResource ComposeRibbonSmallButton}" Content="⇥"/>
+            </StackPanel>
+            <TextBlock x:Name="ComposeTextCaption" Grid.Row="2" FontSize="10" Foreground="{DynamicResource Muted}" TextAlignment="Center"/>
+          </Grid>
+          <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="4,5,8,5"/>
+          <Grid Width="145">
+            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="16"/></Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Button x:Name="ComposeAddressBook" Click="AddressBookButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8D4;" BorderBrush="{DynamicResource IconNeutral}" MinWidth="70" Width="70"/>
+              <Button x:Name="ComposeCheckNames" Click="CheckNamesButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8FB;" BorderBrush="{DynamicResource IconSync}" MinWidth="70" Width="70"/>
+            </StackPanel>
+            <TextBlock x:Name="ComposeNamesCaption" Grid.Row="1" FontSize="10" Foreground="{DynamicResource Muted}" TextAlignment="Center"/>
+          </Grid>
+          <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="4,5,8,5"/>
           <Button x:Name="ComposeAttachButton" Click="AttachButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE723;" BorderBrush="{DynamicResource IconNeutral}"/>
           <Button x:Name="ComposeSignatureButton" Click="SignatureButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8D4;" BorderBrush="{DynamicResource IconFolder}"/>
-          <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="4,4,10,4"/>
-          <Button x:Name="ComposeBoldButton" Click="BoldButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8DD;" BorderBrush="{DynamicResource IconNeutral}"/>
-          <Button x:Name="ComposeItalicButton" Click="ItalicButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8DB;" BorderBrush="{DynamicResource IconNeutral}"/>
-          <Button x:Name="ComposeUnderlineButton" Click="UnderlineButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8DC;" BorderBrush="{DynamicResource IconNeutral}"/>
-          <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,1,0" Margin="4,4,10,4"/>
-          <Button x:Name="ComposeHighButton" Click="HighImportanceButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8C9;" BorderBrush="{DynamicResource IconDanger}"/>
-          <Button x:Name="ComposeLowButton" Click="LowImportanceButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE8CB;" BorderBrush="{DynamicResource IconSync}"/>
         </StackPanel>
         <StackPanel x:Name="ComposeInsertRibbon" Orientation="Horizontal" Visibility="Collapsed">
           <Button x:Name="ComposeInsertAttachment" Click="AttachButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE723;" BorderBrush="{DynamicResource IconNeutral}"/>
@@ -63,6 +156,7 @@
           <CheckBox x:Name="SpellCheckBox" VerticalAlignment="Center" IsChecked="True" Checked="SpellCheckBox_Changed" Unchecked="SpellCheckBox_Changed"/>
         </StackPanel>
       </Grid>
+      </ScrollViewer>
     </Border>
     <Grid Grid.Row="2" Background="{DynamicResource Surface}">
       <Grid.ColumnDefinitions><ColumnDefinition Width="88"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -89,7 +183,7 @@
           <ItemsControl.ItemTemplate><DataTemplate><Border Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" Padding="8,4" Margin="0,0,6,5" CornerRadius="3"><StackPanel Orientation="Horizontal"><TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource Ink}" Margin="0,0,8,0"/><Button Content="×" Tag="{Binding FullPath}" Click="RemoveAttachment_Click" Padding="2,0"/></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
         </ItemsControl>
       </StackPanel>
-      <RichTextBox x:Name="BodyEditor" Grid.Row="6" Grid.ColumnSpan="2" Margin="16,7,16,14" Padding="16,12" VerticalScrollBarVisibility="Auto" Background="{DynamicResource Canvas}" Foreground="{DynamicResource Ink}" BorderBrush="{DynamicResource Stroke}" FontSize="14" SpellCheck.IsEnabled="True"/>
+      <RichTextBox x:Name="BodyEditor" Grid.Row="6" Grid.ColumnSpan="2" Margin="16,7,16,14" Padding="16,12" VerticalScrollBarVisibility="Auto" Background="{DynamicResource Canvas}" Foreground="{DynamicResource Ink}" BorderBrush="{DynamicResource Stroke}" FontSize="14" SpellCheck.IsEnabled="True" SelectionChanged="BodyEditor_SelectionChanged"/>
     </Grid>
     <Border Grid.Row="3" Background="{DynamicResource StatusBar}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,0,0" Padding="14,0">
       <TextBlock x:Name="StatusLabel" Foreground="{DynamicResource ErrorText}" TextWrapping="Wrap" VerticalAlignment="Center"/>

@@ -11,6 +11,7 @@ using System.Windows.Data;
 using System.IO;
 using System.Text;
 using System.Diagnostics;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 
 namespace Mailcario;
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
     private IReadOnlyList<MailItem>? _searchResults;
     private MailItem? _selected;
     private MailContent? _selectedContent;
+    private UnsubscribeAction? _unsubscribeAction;
     private CalendarInvite? _invite;
     private string _folder = "INBOX";
     private char? _folderDelimiter = '/';
@@ -42,6 +44,7 @@ public partial class MainWindow : Window
     private GridLength _savedMessageWidth = new(510);
     private CancellationTokenSource? _mailLoadCts;
     private CancellationTokenSource? _searchCts;
+    private readonly DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(450) };
     private CancellationTokenSource? _imageLoadCts;
     private Task? _webInitTask;
     private string _currentHtml = "";
@@ -54,6 +57,7 @@ public partial class MainWindow : Window
         AccountPaneRow.Height = new GridLength(_settings.AccountPaneHeight);
         WindowTheme.Attach(this);
         InitializeNotifications();
+        _searchTimer.Tick += async (_, _) => { _searchTimer.Stop(); await RunSearchAsync(); };
         InitializeRibbon();
         MessageList.ItemsSource = _visibleMessages;
         ApplyLanguage();
@@ -65,6 +69,7 @@ public partial class MainWindow : Window
             ThemeManager.Changed -= ApplyTheme;
             _mailLoadCts?.Cancel();
             _searchCts?.Cancel();
+            _searchTimer.Stop();
             _imageLoadCts?.Cancel();
         };
         Loaded += MainWindow_Loaded;
@@ -126,6 +131,9 @@ public partial class MainWindow : Window
         ReplyButtonLabel.Text = Localizer.T("reply");
         ForwardButtonLabel.Text = Localizer.T("forward");
         InviteHeading.Text = Localizer.T("invite");
+        UnsubscribeLabel.Text = Localizer.T("newsletterNotice");
+        UnsubscribeButton.Content = Localizer.T("unsubscribe");
+        ConnectionStatusButton.ToolTip = Localizer.T("connectionDetails");
         AcceptButton.Content = Localizer.T("accept");
         TentativeButton.Content = Localizer.T("tentative");
         DeclineButton.Content = Localizer.T("decline");
@@ -140,9 +148,14 @@ public partial class MainWindow : Window
         EnglishButton.Background = Localizer.Language == "en" ? (System.Windows.Media.Brush)FindResource("Accent") : System.Windows.Media.Brushes.Transparent;
         EnglishButton.Foreground = Localizer.Language == "en" ? System.Windows.Media.Brushes.White : (System.Windows.Media.Brush)FindResource("Muted");
         UpdateTrayLanguage();
+        if (TaskbarItemInfo is not null)
+            TaskbarItemInfo.Description = _unreadInboxTotal > 0
+                ? string.Format(Localizer.T("unreadInboxCount"), _unreadInboxTotal) : "Mailcario";
     }
 
-    private string CurrentFolderLabel() => new MailFolder { ServerName = _folder, Delimiter = _folderDelimiter }.DisplayName;
+    private string CurrentFolderLabel() => new MailFolder { ServerName = _folder, Delimiter = _folderDelimiter,
+        IsSent = _allFolders.Any(folder => folder.IsSent && folder.ServerName.Equals(_folder,
+            StringComparison.OrdinalIgnoreCase)) }.DisplayName;
 
     private void RefreshAccountList()
     {
@@ -224,7 +237,9 @@ public partial class MainWindow : Window
                 _folderDelimiter = selectedFolder?.Delimiter;
                 ApplyFolderList();
             }
-            var messages = await session.LoadRecentAsync(folder, token: cts.Token);
+            bool sentFolder = _allFolders.Any(value => value.IsSent && value.ServerName.Equals(folder,
+                StringComparison.OrdinalIgnoreCase));
+            var messages = await session.LoadRecentAsync(folder, token: cts.Token, sentFolder: sentFolder);
             string? ruleError = null;
             try { messages = await MailRuleStore.ApplyAsync(session, account.Email, folder, messages, cts.Token); }
             catch (OperationCanceledException) { throw; }
@@ -232,6 +247,8 @@ public partial class MainWindow : Window
             if (cts.IsCancellationRequested || _account != account || _folder != folder) return;
             _messages = messages;
             SetAccountConnected(account.Email, true);
+            if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+                SetInboxUnreadCount(account.Email, await session.GetUnreadCountAsync("INBOX", cts.Token));
             _searchResults = null;
             FilterMessages();
             MailItem? newMail = ObserveLoadedInbox();
@@ -243,7 +260,7 @@ public partial class MainWindow : Window
             if (SearchBox.Text.Trim().Length > 0) await RunSearchAsync();
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (!cts.IsCancellationRequested) { SetAccountConnected(account.Email, false); StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; } }
+        catch (Exception ex) { if (!cts.IsCancellationRequested) { SetAccountConnected(account.Email, false, ex.Message); StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; } }
         finally
         {
             if (_mailLoadCts == cts)
@@ -259,6 +276,7 @@ public partial class MainWindow : Window
 
     private async Task RunSearchAsync()
     {
+        _searchTimer.Stop();
         if (_offlineMode) { StatusLabel.Text = Localizer.T("offlineStatus"); return; }
         string query = SearchBox.Text.Trim();
         if (query.Length == 0)
@@ -278,7 +296,9 @@ public partial class MainWindow : Window
         try
         {
             await using var session = await ImapSession.ConnectAsync(account, _password, cts.Token);
-            var results = await session.SearchAsync(folder, query, token: cts.Token);
+            bool sentFolder = _allFolders.Any(value => value.IsSent && value.ServerName.Equals(folder,
+                StringComparison.OrdinalIgnoreCase));
+            var results = await session.SearchAsync(folder, query, token: cts.Token, sentFolder: sentFolder);
             if (cts.IsCancellationRequested || _account != account || _folder != folder || SearchBox.Text.Trim() != query) return;
             _searchResults = results;
             FilterMessages();
@@ -367,7 +387,8 @@ public partial class MainWindow : Window
         _availableInlineImages = [];
         _blockedImages = 0;
         _trackingPixels = 0;
-        InvitePanel.Visibility = BlockedImagesPanel.Visibility = TrackingNoticePanel.Visibility = Visibility.Collapsed;
+        _unsubscribeAction = null;
+        UnsubscribePanel.Visibility = InvitePanel.Visibility = BlockedImagesPanel.Visibility = TrackingNoticePanel.Visibility = Visibility.Collapsed;
         HtmlBodyBox.Visibility = Visibility.Collapsed;
         HtmlWebView.Visibility = Visibility.Collapsed;
         PlainBodyScroller.Visibility = Visibility.Visible;
@@ -399,11 +420,16 @@ public partial class MainWindow : Window
             if (_selected != item || _account != account || _folder != folder) return;
             _selectedContent = content;
             BodyLabel.Text = content.PlainText;
+            _unsubscribeAction = content.Unsubscribe;
+            UnsubscribePanel.Visibility = content.Unsubscribe is null ? Visibility.Collapsed : Visibility.Visible;
+            UnsubscribeButton.ToolTip = content.Unsubscribe?.Url.AbsoluteUri;
             if (!item.IsRead)
             {
                 try
                 {
                     await session.SetReadAsync(folder, item.Uid, true);
+                    if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+                        SetInboxUnreadCount(account.Email, await session.GetUnreadCountAsync("INBOX"));
                     if (_account == account && _folder == folder)
                     {
                         foreach (var message in _messages.Concat(_searchResults ?? []))
@@ -675,13 +701,14 @@ public partial class MainWindow : Window
         try
         {
             using MailMessage response = CalendarSupport.CreateReply(_account, _invite, partStat);
-            await SmtpService.SendAsync(_account, _password, response);
-            StatusLabel.Text = Localizer.T("responseSent");
+            var result = await SmtpService.SendAndSaveAsync(_account, _password, response);
+            StatusLabel.Text = result.CopySaved ? Localizer.T("responseSent") :
+                Localizer.T("sentCopyFailed") + ": " + result.CopyError;
         }
         catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
     }
 
-    private void OpenCompose(string to = "", string subject = "", string body = "", string? replyToId = null)
+    private async void OpenCompose(string to = "", string subject = "", string body = "", string? replyToId = null)
     {
         if (_account is null || _password is null)
         {
@@ -689,7 +716,12 @@ public partial class MainWindow : Window
         }
         if (_account is null || _password is null) return;
         var window = new ComposeWindow(_account, _password, to, subject, body, replyToId) { Owner = this };
-        if (window.ShowDialog() == true) StatusLabel.Text = Localizer.T("sent");
+        if (window.ShowDialog() == true)
+        {
+            await RefreshAsync(true);
+            StatusLabel.Text = window.SentCopyError is null ? Localizer.T("sent") :
+                Localizer.T("sentCopyFailed") + ": " + window.SentCopyError;
+        }
     }
 
     private void NewButton_Click(object sender, RoutedEventArgs e) => OpenCompose();
@@ -766,23 +798,37 @@ public partial class MainWindow : Window
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (!IsInitialized) return;
+        _searchTimer.Stop();
         _searchCts?.Cancel();
         string query = SearchBox.Text.Trim();
-        SearchHint.Visibility = query.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        ClearSearchButton.Visibility = query.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        if (_searchResults is not null)
+        UpdateSearchHint();
+        ClearSearchButton.Visibility = SearchBox.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        _searchResults = query.Length == 0 ? null : _messages.Where(item =>
+            item.Subject.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
+            item.From.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
+            item.To.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
+            item.Cc.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        FilterMessages();
+        if (query.Length > 0)
         {
-            _searchResults = null;
-            FilterMessages();
+            StatusLabel.Text = Localizer.T("searching");
+            _searchTimer.Start();
         }
     }
+    private void SearchBox_FocusChanged(object sender, KeyboardFocusChangedEventArgs e) => UpdateSearchHint();
+    private void UpdateSearchHint() => SearchHint.Visibility =
+        SearchBox.Text.Length == 0 && !SearchBox.IsKeyboardFocusWithin ? Visibility.Visible : Visibility.Collapsed;
     private async void SearchBox_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
         e.Handled = true;
         await RunSearchAsync();
     }
-    private async void SearchButton_Click(object sender, RoutedEventArgs e) => await RunSearchAsync();
+    private async void SearchButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SearchBox.Text.Trim().Length == 0) { SearchBox.Focus(); return; }
+        await RunSearchAsync();
+    }
     private void ClearSearchButton_Click(object sender, RoutedEventArgs e) { SearchBox.Clear(); SearchBox.Focus(); }
     private void ReplyButton_Click(object sender, RoutedEventArgs e)
     {

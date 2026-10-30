@@ -23,7 +23,7 @@ public static class AccountStore
         {
             if (File.Exists(AccountsPath))
                 accounts = JsonSerializer.Deserialize<List<MailAccount>>(File.ReadAllText(AccountsPath)) ?? [];
-            if (accounts.Count == 0 && File.Exists(AccountPath))
+            if (!File.Exists(AccountsPath) && File.Exists(AccountPath))
             {
                 var legacy = JsonSerializer.Deserialize<MailAccount>(File.ReadAllText(AccountPath));
                 if (legacy is not null && !accounts.Any(a => SameEmail(a.Email, legacy.Email))) accounts.Insert(0, legacy);
@@ -87,6 +87,33 @@ public static class AccountStore
         if (added > 0)
             File.WriteAllText(AccountsPath, JsonSerializer.Serialize(accounts, new JsonSerializerOptions { WriteIndented = true }));
         return added;
+    }
+
+    public static bool RemoveAccount(string email)
+    {
+        var accounts = LoadAccounts().ToList();
+        int removed = accounts.RemoveAll(account => SameEmail(account.Email, email));
+        if (removed == 0) return false;
+        Directory.CreateDirectory(DirectoryPath);
+        File.WriteAllText(AccountsPath, JsonSerializer.Serialize(accounts, new JsonSerializerOptions { WriteIndented = true }));
+        File.Delete(CredentialPath(email));
+        try
+        {
+            var legacy = File.Exists(AccountPath)
+                ? JsonSerializer.Deserialize<MailAccount>(File.ReadAllText(AccountPath)) : null;
+            if (legacy is not null && SameEmail(legacy.Email, email))
+            {
+                File.Delete(AccountPath);
+                File.Delete(PasswordPath);
+            }
+        }
+        catch (JsonException) { /* A malformed legacy entry cannot restore a removed account. */ }
+        if (SameEmail(LoadActiveEmail(), email))
+        {
+            if (accounts.Count > 0) SaveActiveEmail(accounts[0].Email);
+            else File.Delete(ActiveAccountPath);
+        }
+        return true;
     }
 
     public static void UpdateCredential(string email, string secret)

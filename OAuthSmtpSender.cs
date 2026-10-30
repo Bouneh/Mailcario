@@ -89,6 +89,9 @@ internal static class OAuthSmtpSender
         string date = DateTimeOffset.Now.ToString("ddd, dd MMM yyyy HH:mm:ss zzz",
             System.Globalization.CultureInfo.InvariantCulture);
         headers.Append("Date: ").Append(date[..^3]).Append(date[^2..]).Append("\r\n");
+        string? messageId = message.Headers["Message-ID"];
+        if (!string.IsNullOrWhiteSpace(messageId) && messageId.IndexOfAny(['\r', '\n']) < 0)
+            headers.Append("Message-ID: ").Append(messageId).Append("\r\n");
         headers.Append("Subject: ").Append(EncodeHeader(message.Subject)).Append("\r\n");
         if (message.Priority != MailPriority.Normal)
         {

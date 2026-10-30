@@ -45,6 +45,7 @@ public partial class MainWindow
                     ServerName = folder.ServerName,
                     Delimiter = folder.Delimiter,
                     CanSelect = folder.CanSelect,
+                    IsSent = folder.IsSent,
                     HasChildren = _allFolders.Any(child => IsDescendant(child, folder.ServerName, folder.Delimiter)),
                     IsExpanded = !collapsed.Contains(folder.ServerName)
                 }).ToList();

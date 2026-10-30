@@ -6,6 +6,8 @@ namespace Mailcario;
 public partial class SettingsWindow : Window
 {
     public ClientSettings Settings { get; private set; }
+    private readonly HashSet<string> _accountsToRemove = new(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyCollection<string> AccountsToRemove => _accountsToRemove;
 
     public SettingsWindow(ClientSettings settings, IReadOnlyList<MailAccount> accounts)
     {
@@ -37,8 +39,12 @@ public partial class SettingsWindow : Window
         ViewCheck.Content = Localizer.T("viewTab");
         ImagesHeading.Text = Localizer.T("imagesPerAccount");
         ImagesRisk.Text = Localizer.T("autoLoadImagesRisk");
+        AccountsHeading.Text = Localizer.T("accounts");
+        RemoveAccountButton.Content = Localizer.T("removeAccount");
+        RemoveAccountHint.Text = Localizer.T("removeAccountHint");
         foreach (MailAccount account in accounts)
         {
+            AccountsList.Items.Add(account);
             ImageAccountOptions.Children.Add(new CheckBox
             {
                 Content = string.Format(Localizer.T("autoLoadImages"), account.Email),
@@ -85,4 +91,20 @@ public partial class SettingsWindow : Window
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    private void AccountsList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        RemoveAccountButton.IsEnabled = AccountsList.SelectedItem is MailAccount;
+
+    private void RemoveAccountButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (AccountsList.SelectedItem is not MailAccount account) return;
+        string warning = string.Format(Localizer.T("removeAccountConfirm"), account.Email);
+        if (MessageBox.Show(this, warning, Localizer.T("removeAccount"), MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        _accountsToRemove.Add(account.Email);
+        AccountsList.Items.Remove(account);
+        foreach (CheckBox check in ImageAccountOptions.Children.OfType<CheckBox>().Where(check =>
+                     string.Equals(check.Tag as string, account.Email, StringComparison.OrdinalIgnoreCase)).ToList())
+            ImageAccountOptions.Children.Remove(check);
+    }
 }

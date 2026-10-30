@@ -29,7 +29,7 @@
 
 | Une interface claire | Les fonctions du quotidien | La confidentialité intégrée |
 | --- | --- | --- |
-| Affichage en trois volets inspiré d’Outlook, colonnes redimensionnables, dossiers, recherche et thèmes clair et sombre. | Plusieurs comptes IMAP, envoi SMTP, réponses, transfert, pièces jointes, signatures, règles et notifications. | Images distantes bloquées par défaut, pixels de suivi détectés et bloqués, scripts HTML désactivés. |
+| Affichage en trois volets inspiré d’Outlook, colonnes redimensionnables, dossiers, recherche dans le dossier et thèmes clair et sombre. | Plusieurs comptes IMAP, envoi SMTP, réponses, transfert, pièces jointes, signatures de tous les comptes, carnet d’adresses local, règles et notifications. | Images distantes bloquées par défaut, pixels de suivi détectés et bloqués, scripts HTML désactivés. |
 
 Mailcario est un **client de messagerie local pour Windows**. Aucun serveur personnel n’est nécessaire : il utilise votre fournisseur de messagerie actuel. Les paramètres restent sur votre PC ; les identifiants enregistrés sont protégés pour votre compte Windows.
 
@@ -38,6 +38,8 @@ Mailcario est un **client de messagerie local pour Windows**. Aucun serveur pers
 | Rédaction | Import de comptes Thunderbird |
 | --- | --- |
 | ![Fenêtre de rédaction Mailcario](docs/images/compose-dark.png) | ![Import de comptes IMAP Thunderbird](docs/images/thunderbird-import.png) |
+
+Le ruban de rédaction propose le presse-papiers, la mise en forme, les palettes de couleurs, les listes numérotées et la vérification des destinataires. Vous pouvez glisser des fichiers dans un brouillon et changer de signature enregistrée. Le nombre de mails non lus apparaît sur l’icône de la barre des tâches et se met à jour quand un message est ouvert.
 
 <details>
 <summary><strong>Protection lors de la lecture</strong></summary>

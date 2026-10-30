@@ -38,6 +38,15 @@ public static class MimeReader
 
     public static MailContent ReadMessage(byte[] raw)
     {
+        int headerLimit = Math.Min(raw.Length, 65_536);
+        int headerEnd = headerLimit;
+        for (int i = 0; i < headerLimit - 1; i++)
+        {
+            if (raw[i] == '\n' && raw[i + 1] == '\n') { headerEnd = i + 2; break; }
+            if (i + 3 < headerLimit && raw[i] == '\r' && raw[i + 1] == '\n' &&
+                raw[i + 2] == '\r' && raw[i + 3] == '\n') { headerEnd = i + 4; break; }
+        }
+        var messageHeaders = ReadHeaders(raw[..headerEnd]);
         var collector = new Collector();
         ReadPart(Encoding.Latin1.GetString(raw), collector, 0);
         CollectDataImages(collector);
@@ -47,6 +56,7 @@ public static class MimeReader
         {
             PlainText = body.Trim(),
             HtmlText = collector.HtmlText,
+            Unsubscribe = UnsubscribeSupport.Parse(messageHeaders),
             CalendarText = collector.CalendarText,
             AttachmentNames = collector.Attachments,
             InlineImages = collector.InlineImages

@@ -168,8 +168,42 @@ public partial class MainWindow
         var window = new SettingsWindow(_settings, _accounts) { Owner = this };
         if (window.ShowDialog() != true) return;
         _settings = window.Settings;
-        try { _settings.Save(); }
+        bool activeRemoved = window.AccountsToRemove.Contains(_account?.Email ?? "", StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (string email in window.AccountsToRemove)
+            {
+                if (!AccountStore.RemoveAccount(email)) continue;
+                _settings.AutoLoadImages.Remove(email);
+                foreach (string key in _settings.FolderViews.Keys.Where(key =>
+                             key.Equals(email, StringComparison.OrdinalIgnoreCase)).ToList())
+                    _settings.FolderViews.Remove(key);
+                SignatureStore.RemoveAccount(email);
+                MailRuleStore.RemoveAccount(email);
+                _connectedAccounts.Remove(email);
+                _connectionErrors.Remove(email);
+                _inboxCursors.Remove(email);
+                _unreadInboxCounts.Remove(email);
+            }
+            _settings.Save();
+        }
         catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
+        if (window.AccountsToRemove.Count > 0)
+        {
+            _accounts = AccountStore.LoadAccounts();
+            UpdateUnreadBadge();
+            if (activeRemoved)
+            {
+                _account = _accounts.FirstOrDefault();
+                _password = _account is null ? null : AccountStore.LoadPassword(_account.Email);
+                ResetMailbox();
+            }
+            RefreshAccountList();
+            if (activeRemoved && _account is not null && _password is not null)
+                await RefreshAsync(true);
+            else if (activeRemoved && _account is null)
+                StatusLabel.Text = Localizer.T("statusConnect");
+        }
         ThemeManager.SetMode(_settings.ThemeMode);
         ConfigureMailTimer();
         ApplyRibbonPreferences();

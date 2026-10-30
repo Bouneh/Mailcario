@@ -17,6 +17,73 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--single-instance-check")
+        {
+            string name = "Preview" + Guid.NewGuid().ToString("N");
+            using var activated = new ManualResetEventSlim();
+            using var first = new SingleInstanceCoordinator(name, () => activated.Set());
+            bool secondWasPrimary = Task.Run(() =>
+            {
+                using var second = new SingleInstanceCoordinator(name, () => { });
+                return second.IsPrimary;
+            }).GetAwaiter().GetResult();
+            bool passed = first.IsPrimary && !secondWasPrimary && activated.Wait(TimeSpan.FromSeconds(5));
+            Console.WriteLine(passed ? "Single instance activation check passed" : "Single instance activation check failed");
+            if (!passed) Environment.ExitCode = 1;
+            return;
+        }
+        if (args.Length > 0 && args[0] == "--unread-badge-check")
+        {
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var window = new MainWindow();
+            var accounts = new[]
+            {
+                new MailAccount { Email = "first@example.invalid" },
+                new MailAccount { Email = "second@example.invalid" }
+            };
+            typeof(MainWindow).GetField("_accounts", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, accounts);
+            var setCount = typeof(MainWindow).GetMethod("SetInboxUnreadCount",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            setCount.Invoke(window, [accounts[0].Email, 2]);
+            setCount.Invoke(window, [accounts[1].Email, 3]);
+            bool passed = window.TaskbarItemInfo.Overlay is not null &&
+                window.TaskbarItemInfo.Description.Contains('5');
+            setCount.Invoke(window, [accounts[0].Email, 0]);
+            passed &= window.TaskbarItemInfo.Overlay is not null &&
+                window.TaskbarItemInfo.Description.Contains('3');
+            setCount.Invoke(window, [accounts[1].Email, 0]);
+            passed &= window.TaskbarItemInfo.Overlay is null;
+            string? previewDirectory = Environment.GetEnvironmentVariable("MAILCARIO_BADGE_PREVIEW_DIR");
+            if (!string.IsNullOrWhiteSpace(previewDirectory))
+            {
+                Directory.CreateDirectory(previewDirectory);
+                var createBadge = typeof(MainWindow).GetMethod("CreateMailBadge",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                foreach (int count in new[] { 1, 12, 100 })
+                {
+                    var badge = (BitmapSource)createBadge.Invoke(null, [count])!;
+                    foreach ((string suffix, BitmapSource image) in new[]
+                    {
+                        ("64", badge),
+                        ("16", new TransformedBitmap(badge, new ScaleTransform(0.25, 0.25)))
+                    })
+                    {
+                        var encoder = new PngBitmapEncoder();
+                        encoder.Frames.Add(BitmapFrame.Create(image));
+                        using var stream = File.Create(Path.Combine(previewDirectory, $"badge-{count}-{suffix}.png"));
+                        encoder.Save(stream);
+                    }
+                }
+            }
+            window.Close();
+            ThemeManager.Shutdown();
+            Console.WriteLine(passed ? "Unread inbox badge check passed" : "Unread inbox badge check failed");
+            if (!passed) Environment.ExitCode = 1;
+            return;
+        }
         if (args.Length > 0 && args[0] == "--inbox-sync-check")
         {
             var checkApp = new App();
@@ -60,6 +127,10 @@ internal static class Program
                 == new DateTimeOffset(2026, 10, 29, 8, 31, 52, TimeSpan.Zero);
             passed &= MailDateParser.Parse("invalid", "29-Oct-2026 21:52:28 +0000")
                 == new DateTimeOffset(2026, 10, 29, 21, 52, 28, TimeSpan.Zero);
+            passed &= MailDateParser.Parse("Fri, 30 Oct 2026 11:55:28 +0100", "30-Oct-2026 14:15:22 +0100")
+                == new DateTimeOffset(2026, 10, 30, 14, 15, 22, TimeSpan.FromHours(1));
+            passed &= MailDateParser.Parse("Fri, 30 Oct 2026 11:55:28 +0100", "30-Oct-2026 14:15:22 +0100", true)
+                == new DateTimeOffset(2026, 10, 30, 11, 55, 28, TimeSpan.FromHours(1));
             window.Close();
             ThemeManager.Shutdown();
             Console.WriteLine(passed ? "Incoming mail and date parsing checks passed" :
@@ -181,6 +252,34 @@ internal static class Program
             ThemeManager.Shutdown();
             return;
         }
+        if (args.Length > 0 && args[0] == "--contacts-preview")
+        {
+            var previewApp = new App();
+            previewApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var window = (Window)Activator.CreateInstance(
+                typeof(SmtpService).Assembly.GetType("Mailcario.ContactsWindow")!)!;
+            Render(window, 720, 490, args.Length > 1 ? args[1] :
+                Path.Combine(Path.GetTempPath(), "Mailcario-contacts-preview.png"));
+            ThemeManager.Shutdown();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "--color-palette-preview")
+        {
+            var previewApp = new App();
+            previewApp.InitializeComponent();
+            ThemeManager.Initialize(args.Length > 2 && args[2] == "light" ? "light" : "dark");
+            var account = new MailAccount { Email = "preview@example.invalid" };
+            var compose = new ComposeWindow(account, "unused");
+            var palette = (FrameworkElement)typeof(ComposeWindow).GetMethod("BuildColorPalette",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(compose, [false])!;
+            var wrapper = new Window { Content = palette, Background = (Brush)Application.Current.FindResource("Canvas") };
+            Render(wrapper, 283, 395, args.Length > 1 ? args[1] :
+                Path.Combine(Path.GetTempPath(), "Mailcario-palette-preview.png"));
+            compose.Close();
+            ThemeManager.Shutdown();
+            return;
+        }
         if (args.Length > 0 && args[0] == "--rules-compose-check")
         {
             var checkApp = new App();
@@ -192,6 +291,38 @@ internal static class Program
                 ((TextBox)compose.FindName("SubjectBox")).Text == "Test subject" &&
                 ((ComboBox)compose.FindName("FromAccountBox")).Items.Cast<ComboBoxItem>()
                     .Any(item => item.Content?.ToString() == sample.Email);
+            var editor = (RichTextBox)compose.FindName("BodyEditor");
+            var sourceRun = new Run("Source") { FontWeight = FontWeights.Bold };
+            var targetRun = new Run("Target");
+            editor.Document.Blocks.Clear();
+            editor.Document.Blocks.Add(new Paragraph(sourceRun));
+            editor.Document.Blocks.Add(new Paragraph(targetRun));
+            editor.Selection.Select(sourceRun.ContentStart, sourceRun.ContentEnd);
+            typeof(ComposeWindow).GetMethod("FormatPainterButton_Click", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(compose, [new Button(), new RoutedEventArgs(Button.ClickEvent)]);
+            editor.Selection.Select(targetRun.ContentStart, targetRun.ContentEnd);
+            passed &= new TextRange(targetRun.ContentStart, targetRun.ContentEnd)
+                .GetPropertyValue(TextElement.FontWeightProperty) is FontWeight weight && weight >= FontWeights.Bold;
+            var palette = (Border)typeof(ComposeWindow).GetMethod("BuildColorPalette",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(compose, [false])!;
+            var paletteRows = ((StackPanel)palette.Child).Children
+                .OfType<System.Windows.Controls.Primitives.UniformGrid>().ToArray();
+            passed &= paletteRows.Length == 2 && paletteRows[0].Children.Count == 60 &&
+                paletteRows[1].Children.Count == 10;
+            var contrastToggle = ((StackPanel)palette.Child).Children.OfType<CheckBox>().First();
+            contrastToggle.IsChecked = true;
+            passed &= paletteRows[0].Children.OfType<Button>().Any(button => !button.IsEnabled);
+            var pickColor = typeof(ComposeWindow).GetMethod("SelectPaletteColor",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            pickColor.Invoke(compose, [false, Color.FromRgb(255, 0, 0)]);
+            passed &= (Color?)typeof(ComposeWindow).GetField("_selectedFontColor",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(compose) == Color.FromRgb(255, 0, 0);
+            passed &= new TextRange(targetRun.ContentStart, targetRun.ContentEnd)
+                .GetPropertyValue(TextElement.ForegroundProperty) is SolidColorBrush selectedFontBrush &&
+                selectedFontBrush.Color == Color.FromRgb(255, 0, 0);
+            pickColor.Invoke(compose, [false, null]);
+            passed &= typeof(ComposeWindow).GetField("_selectedFontColor",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(compose) is null;
             ((Button)compose.FindName("ComposeBccButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             passed &= ((TextBox)compose.FindName("BccBox")).Visibility == Visibility.Visible;
             string attachmentPath = Path.Combine(Path.GetTempPath(), "mailcario-attach-check-" +
@@ -222,6 +353,23 @@ internal static class Program
             object restored = parseSignatures.Invoke(null, [serializedCatalog])!;
             var restoredAccounts = (System.Collections.IDictionary)restored.GetType().GetProperty("Accounts")!.GetValue(restored)!;
             passed &= ((System.Collections.IList)restoredAccounts["sender@example.invalid"]!).Count == 2;
+            var otherSignatures = (System.Collections.IList)Activator.CreateInstance(signatureEntries.GetType())!;
+            object otherSignature = Activator.CreateInstance(signatureEntries[0]!.GetType())!;
+            otherSignature.GetType().GetProperty("Name")!.SetValue(otherSignature, "Other account");
+            otherSignature.GetType().GetProperty("Text")!.SetValue(otherSignature, "-- Other account");
+            otherSignatures.Add(otherSignature);
+            restoredAccounts["other@example.invalid"] = otherSignatures;
+            var choices = (System.Collections.IList)signatureType.GetMethod("Choices", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, [restored])!;
+            passed &= choices.Count == 3 && choices.Cast<object>().Any(choice =>
+                choice.GetType().GetProperty("AccountEmail")!.GetValue(choice)!.ToString() == "other@example.invalid");
+            var signatureMenu = (ContextMenu)typeof(ComposeWindow).GetMethod("CreateSignatureMenu",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(compose,
+                [((Button)compose.FindName("ComposeSignatureButton")), choices])!;
+            passed &= signatureMenu.Items.Count == 7 &&
+                ReferenceEquals(signatureMenu.Style, compose.FindResource("MailMessageContextMenuStyle")) &&
+                signatureMenu.Items.OfType<MenuItem>().All(item =>
+                    ReferenceEquals(item.Style, compose.FindResource("MailMessageMenuItemStyle")));
             var managerType = typeof(SmtpService).Assembly.GetType("Mailcario.SignaturesWindow")!;
             var manager = (Window)Activator.CreateInstance(managerType, ["preview@example.invalid"])!;
             managerType.GetMethod("AddEntry", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(manager, null);
@@ -241,6 +389,19 @@ internal static class Program
             passed &= html.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", StringComparison.Ordinal) &&
                 !html.Contains("<script>", StringComparison.Ordinal) &&
                 html.Contains("font-weight:bold", StringComparison.Ordinal);
+            var styledRun = new Run("A<&>") { FontFamily = new FontFamily("Georgia"), FontSize = 18,
+                Foreground = new SolidColorBrush(Color.FromRgb(54, 142, 207)),
+                Background = new SolidColorBrush(Color.FromRgb(255, 238, 135)) };
+            var styledDocument = new FlowDocument();
+            styledDocument.Blocks.Add(new Paragraph(styledRun) { Margin = new Thickness(24, 0, 0, 0) });
+            string styledHtml = (string)documentType.GetMethod("ToHtml", BindingFlags.Public | BindingFlags.Static)!
+                .Invoke(null, [styledDocument])!;
+            passed &= styledHtml.Contains("font-family:'Georgia'", StringComparison.Ordinal) &&
+                styledHtml.Contains("font-size:18px", StringComparison.Ordinal) &&
+                styledHtml.Contains("color:#368ECF", StringComparison.Ordinal) &&
+                styledHtml.Contains("background-color:#FFEE87", StringComparison.Ordinal) &&
+                styledHtml.Contains("margin-left:24px", StringComparison.Ordinal) &&
+                styledHtml.Contains("A&lt;&amp;&gt;", StringComparison.Ordinal);
             using var message = SmtpService.CreateMessage(sample, "recipient@example.invalid", "", "Subject", "Body");
             message.AlternateViews.Add(System.Net.Mail.AlternateView.CreateAlternateViewFromString(
                 "<p>Body</p>", Encoding.UTF8, "text/html"));
@@ -248,6 +409,7 @@ internal static class Program
                 new MemoryStream(Encoding.UTF8.GetBytes("file content")), "rapport-été.txt", "text/plain"));
             message.Priority = System.Net.Mail.MailPriority.High;
             message.Headers.Add("Disposition-Notification-To", sample.Email);
+            message.Headers["Message-ID"] = "<test-copy@mailcario.local>";
             var smtpType = typeof(SmtpService).Assembly.GetType("Mailcario.OAuthSmtpSender")!;
             string mime = (string)smtpType.GetMethod("BuildMime", BindingFlags.NonPublic | BindingFlags.Static)!
                 .Invoke(null, [message])!;
@@ -256,6 +418,7 @@ internal static class Program
                 mime.Contains("filename*=UTF-8''rapport-%C3%A9t%C3%A9.txt", StringComparison.Ordinal) &&
                 mime.Contains(Convert.ToBase64String(Encoding.UTF8.GetBytes("file content")), StringComparison.Ordinal) &&
                 mime.Contains("Importance: high", StringComparison.Ordinal) &&
+                mime.Contains("Message-ID: <test-copy@mailcario.local>", StringComparison.Ordinal) &&
                 mime.Contains("Disposition-Notification-To: <sender@example.invalid>", StringComparison.Ordinal);
             var rule = new MailRule { AccountEmail = sample.Email, SenderContains = "sender@example.invalid",
                 SubjectContains = "Project", Action = "mark-read", MinimumUid = 10 };
@@ -291,11 +454,52 @@ internal static class Program
             passed &= ((ProgressBar)main.FindName("SyncProgress")).Visibility == Visibility.Visible &&
                 ((TextBlock)main.FindName("SyncStatusText")).Text.Contains(sample.Email, StringComparison.Ordinal);
             typeof(MainWindow).GetMethod("SetAccountConnected", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .Invoke(main, [sample.Email, true]);
+                .Invoke(main, [sample.Email, true, null]);
             typeof(MainWindow).GetMethod("EndSync", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .Invoke(main, null);
             passed &= ((ProgressBar)main.FindName("SyncProgress")).Visibility == Visibility.Collapsed &&
                 ((TextBlock)main.FindName("ConnectionStatusText")).Text == Localizer.T("connected");
+            typeof(MainWindow).GetMethod("SetAccountConnected", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(main, [sample.Email, false, "Test IMAP failure"]);
+            ((Button)main.FindName("ConnectionStatusButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            passed &= ((StackPanel)main.FindName("ConnectionDetailsPanel")).Children.OfType<StackPanel>()
+                .SelectMany(panel => panel.Children.OfType<TextBlock>())
+                .Any(label => label.Text.Contains("Test IMAP failure", StringComparison.Ordinal));
+            typeof(MainWindow).GetField("_messages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(main, new[] { new MailItem { Uid = 1, From = "Alice <alice@example.invalid>", Subject = "Project update" },
+                    new MailItem { Uid = 2, From = "Bob <bob@example.invalid>", Subject = "Other" } });
+            ((TextBox)main.FindName("SearchBox")).Text = "Project";
+            passed &= ((ListBox)main.FindName("MessageList")).Items.Count == 1 &&
+                ((System.Windows.Threading.DispatcherTimer)typeof(MainWindow)
+                .GetField("_searchTimer", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(main)!).IsEnabled;
+            ((TextBox)main.FindName("SearchBox")).Clear();
+            passed &= ((ListBox)main.FindName("MessageList")).Items.Count == 2;
+            var settingsWindow = new SettingsWindow(new ClientSettings(), [sample]);
+            passed &= ((ListBox)settingsWindow.FindName("AccountsList")).Items.Count == 1 &&
+                ((Button)settingsWindow.FindName("RemoveAccountButton")).Content?.ToString() == Localizer.T("removeAccount");
+            settingsWindow.Close();
+            var insertSignature = typeof(ComposeWindow).GetMethod("InsertSignature",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            insertSignature.Invoke(compose, ["-- First"]);
+            insertSignature.Invoke(compose, ["-- Second"]);
+            string composedText = new TextRange(((RichTextBox)compose.FindName("BodyEditor")).Document.ContentStart,
+                ((RichTextBox)compose.FindName("BodyEditor")).Document.ContentEnd).Text;
+            passed &= composedText.Contains("-- Second", StringComparison.Ordinal) &&
+                !composedText.Contains("-- First", StringComparison.Ordinal);
+            typeof(ComposeWindow).GetMethod("ClearSignature", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(compose, null);
+            composedText = new TextRange(((RichTextBox)compose.FindName("BodyEditor")).Document.ContentStart,
+                ((RichTextBox)compose.FindName("BodyEditor")).Document.ContentEnd).Text;
+            passed &= !composedText.Contains("-- Second", StringComparison.Ordinal);
+            ((TextBox)compose.FindName("ToBox")).Text = "invalid recipient";
+            typeof(ComposeWindow).GetMethod("CheckNamesButton_Click", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(compose, [new Button(), new RoutedEventArgs(Button.ClickEvent)]);
+            passed &= ((TextBlock)compose.FindName("StatusLabel")).Text.Contains("invalid recipient",
+                StringComparison.Ordinal);
+            var contactsWindow = (Window)Activator.CreateInstance(
+                typeof(SmtpService).Assembly.GetType("Mailcario.ContactsWindow")!)!;
+            passed &= contactsWindow.Title == Localizer.T("addressBook");
+            contactsWindow.Close();
             main.Close();
             compose.Close();
             ThemeManager.Shutdown();
@@ -535,6 +739,11 @@ internal static class Program
                 AccountStore.LoadPassword(second.Email) == "another-sample-password";
             AccountStore.SaveAccount(account, "migrated-password");
             passed &= AccountStore.LoadAccounts().Count == 2 && AccountStore.LoadPassword(account.Email) == "migrated-password";
+            passed &= AccountStore.RemoveAccount(second.Email) && AccountStore.LoadAccounts().Count == 1 &&
+                AccountStore.LoadPassword(second.Email) is null;
+            passed &= AccountStore.RemoveAccount(account.Email) && AccountStore.LoadAccounts().Count == 0 &&
+                AccountStore.LoadPassword(account.Email) is null && AccountStore.LoadActiveEmail() is null &&
+                !File.Exists(legacyAccountFile) && !File.Exists(legacyPasswordFile);
             File.Delete(accountFile);
             File.Delete(Path.Combine(folder, "active-account.txt"));
             File.Delete(legacyAccountFile);
@@ -583,6 +792,14 @@ internal static class Program
                 "Content-Transfer-Encoding: base64\r\nContent-Disposition: inline\r\n\r\n" +
                 Convert.ToBase64String(inlineBytes.ToArray()) + "\r\n--mailcario-test--\r\n";
             MailContent signature = MimeReader.ReadMessage(Encoding.UTF8.GetBytes(inlineMime));
+            string newsletter = "List-Unsubscribe: <https://newsletter.example/unsubscribe?id=123>, <mailto:leave@example.org>\r\n" +
+                "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\nContent-Type: text/plain\r\n\r\nHello";
+            UnsubscribeAction? action = MimeReader.ReadMessage(Encoding.UTF8.GetBytes(newsletter)).Unsubscribe;
+            passed &= action?.Url.AbsoluteUri == "https://newsletter.example/unsubscribe?id=123" && action.OneClick;
+            passed &= MimeReader.ReadMessage(Encoding.UTF8.GetBytes(
+                "List-Unsubscribe: <javascript:alert(1)>, <http://127.0.0.1/unsubscribe>\r\n\r\nHello")).Unsubscribe is null;
+            passed &= MimeReader.ReadMessage(Encoding.UTF8.GetBytes(
+                "List-Unsubscribe: <mailto:leave@example.org>\r\n\r\nHello")).Unsubscribe?.Url.Scheme == "mailto";
             const string inlineId = "cid:logo@example.invalid";
             var hiddenSignature = SafeHtmlRenderer.Render(signature.HtmlText);
             RemoteMailImage? embeddedImage = signature.InlineImages.TryGetValue(inlineId, out var embedded)
@@ -710,6 +927,9 @@ internal static class Program
         ((System.Windows.Shapes.Ellipse)populated.FindName("ConnectionDot")).Fill =
             (Brush)populated.FindResource("IconSync");
         Render(populated, 1320, 780, Path.Combine(output, "main-populated.png"));
+        var searchDark = new MainWindow();
+        ((TextBox)searchDark.FindName("SearchBox")).Text = "Rechercher un message";
+        Render(searchDark, 1320, 780, Path.Combine(output, "search-dark.png"));
         var imagePreview = new MainWindow();
         var imageMail = SafeHtmlRenderer.Render("<p>Bonjour, voici les nouvelles du jour.</p>" +
             "<img src='https://cdn.example.org/photo.jpg' width='600' height='300'>" +
@@ -776,6 +996,9 @@ internal static class Program
         Localizer.SetLanguage("fr");
         var liveSwitchPreview = new MainWindow();
         ThemeManager.SetMode("light");
+        var searchLight = new MainWindow();
+        ((TextBox)searchLight.FindName("SearchBox")).Text = "Search for a message";
+        Render(searchLight, 1320, 780, Path.Combine(output, "search-light.png"));
         Render(liveSwitchPreview, 1320, 780, Path.Combine(output, "main-light.png"));
         Render(new SettingsWindow(new ClientSettings { ThemeMode = "light" }, sampleAccounts), 600, 700, Path.Combine(output, "settings-light.png"));
         ThemeManager.Shutdown();

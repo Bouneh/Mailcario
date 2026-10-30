@@ -14,6 +14,8 @@ internal sealed class SignatureEntry
     public string Text { get; set; } = "";
 }
 
+internal sealed record SignatureChoice(string AccountEmail, SignatureEntry Signature);
+
 internal sealed class SignatureCatalog
 {
     public int Version { get; set; } = 2;
@@ -38,6 +40,14 @@ internal static class SignatureStore
         }).ToList() ?? [];
     }
 
+    public static List<SignatureChoice> ListAll() => Choices(LoadCatalog());
+
+    internal static List<SignatureChoice> Choices(SignatureCatalog catalog) => catalog.Accounts
+        .SelectMany(account => account.Value.Select(signature => new SignatureChoice(account.Key,
+            new SignatureEntry { Id = signature.Id, Name = signature.Name, Text = signature.Text })))
+        .Where(choice => !string.IsNullOrWhiteSpace(choice.Signature.Name))
+        .ToList();
+
     public static void Save(string email, IReadOnlyList<SignatureEntry> entries)
     {
         SignatureCatalog catalog = LoadCatalog();
@@ -52,6 +62,16 @@ internal static class SignatureStore
         string temporary = PathName + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(catalog, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(temporary, PathName, true);
+    }
+
+    public static void RemoveAccount(string email)
+    {
+        SignatureCatalog catalog = LoadCatalog();
+        string? key = catalog.Accounts.Keys.FirstOrDefault(value =>
+            value.Equals(email, StringComparison.OrdinalIgnoreCase));
+        if (key is null) return;
+        catalog.Accounts.Remove(key);
+        File.WriteAllText(PathName, JsonSerializer.Serialize(catalog, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static SignatureCatalog LoadCatalog()

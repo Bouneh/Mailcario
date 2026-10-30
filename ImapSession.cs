@@ -87,7 +87,7 @@ public sealed class ImapSession : IAsyncDisposable
         {
             string line = part.Line;
             if (!line.StartsWith("* LIST ", StringComparison.OrdinalIgnoreCase)) continue;
-            var match = Regex.Match(line, "\\* LIST \\(.*?\\) (?<delimiter>\\\"(?:[^\\\"]|\\\\.)*\\\"|NIL) (?<name>.*)$", RegexOptions.IgnoreCase);
+            var match = Regex.Match(line, "\\* LIST \\((?<flags>.*?)\\) (?<delimiter>\\\"(?:[^\\\"]|\\\\.)*\\\"|NIL) (?<name>.*)$", RegexOptions.IgnoreCase);
             if (!match.Success) continue;
             string name = match.Groups["name"].Value.Trim();
             if (name.StartsWith('"') && name.EndsWith('"')) name = name[1..^1].Replace("\\\"", "\"");
@@ -96,20 +96,31 @@ public sealed class ImapSession : IAsyncDisposable
                 ? null : separator[1];
             if (!folders.Any(f => f.ServerName.Equals(name, StringComparison.OrdinalIgnoreCase)))
                 folders.Add(new MailFolder { ServerName = name, Delimiter = delimiter,
+                    IsSent = Regex.IsMatch(match.Groups["flags"].Value, @"\\Sent\b", RegexOptions.IgnoreCase),
                     CanSelect = !line.Contains("\\Noselect", StringComparison.OrdinalIgnoreCase) });
+        }
+        if (!folders.Any(folder => folder.IsSent))
+        {
+            string[] preferred = ["Sent Items", "Sent Messages", "Sent Mail", "Éléments envoyés",
+                "Elements envoyes", "Envoyés", "Envoyes", "Sent"];
+            MailFolder? inferred = preferred.Select(name => folders.FirstOrDefault(folder =>
+                    folder.CanSelect && folder.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                .FirstOrDefault(folder => folder is not null);
+            if (inferred is not null) inferred.IsSent = true;
         }
         return folders.Take(1).Concat(folders.Skip(1).OrderBy(f => ImapFolderName.Decode(f.ServerName),
             StringComparer.CurrentCultureIgnoreCase)).ToList();
     }
 
-    public async Task<IReadOnlyList<MailItem>> LoadRecentAsync(string folder, int count = 30, CancellationToken token = default)
+    public async Task<IReadOnlyList<MailItem>> LoadRecentAsync(string folder, int count = 30,
+        CancellationToken token = default, bool sentFolder = false)
     {
         int total = await SelectAsync(folder, token);
         var items = new List<MailItem>();
         for (int sequence = total; sequence > Math.Max(0, total - count); sequence--)
         {
             token.ThrowIfCancellationRequested();
-            var item = await FetchSummaryAsync($"FETCH {sequence}", token);
+            var item = await FetchSummaryAsync($"FETCH {sequence}", token, sentFolder);
             if (item is not null) items.Add(item);
         }
         return items;
@@ -151,7 +162,28 @@ public sealed class ImapSession : IAsyncDisposable
             if (existsMatch.Success) int.TryParse(existsMatch.Groups[1].Value, out total);
         }
         MailItem? latest = total > 0 ? await FetchSummaryAsync($"FETCH {total}", token) : null;
-        return new InboxSnapshot(validity, latest);
+        int unreadCount = await CountUnreadInSelectedFolderAsync(token);
+        return new InboxSnapshot(validity, latest, unreadCount);
+    }
+
+    public async Task<int> GetUnreadCountAsync(string folder, CancellationToken token = default)
+    {
+        await SelectAsync(folder, token);
+        return await CountUnreadInSelectedFolderAsync(token);
+    }
+
+    private async Task<int> CountUnreadInSelectedFolderAsync(CancellationToken token)
+    {
+        var response = await CommandAsync("SEARCH UNSEEN", token);
+        int count = 0;
+        foreach (var part in response.Parts)
+        {
+            if (!part.Line.Equals("* SEARCH", StringComparison.OrdinalIgnoreCase) &&
+                !part.Line.StartsWith("* SEARCH ", StringComparison.OrdinalIgnoreCase)) continue;
+            foreach (string sequence in part.Line[8..].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                if (uint.TryParse(sequence, out _)) count++;
+        }
+        return count;
     }
 
     public async Task SetReadAsync(string folder, uint uid, bool read, CancellationToken token = default)
@@ -182,10 +214,48 @@ public sealed class ImapSession : IAsyncDisposable
     public async Task CreateFolderAsync(string name, CancellationToken token = default) =>
         await CommandAsync("CREATE " + Quote(name), token);
 
+    public async Task<string> FindOrCreateSentFolderAsync(CancellationToken token = default)
+    {
+        var folders = await ListFoldersAsync(token);
+        var sent = folders.FirstOrDefault(f => f.CanSelect && f.IsSent);
+        if (sent is not null) return sent.ServerName;
+        await CreateFolderAsync("Sent", token);
+        return "Sent";
+    }
+
+    public async Task<bool> ContainsMessageIdAsync(string folder, string messageId, CancellationToken token = default)
+    {
+        await SelectAsync(folder, token);
+        var response = await CommandAsync("UID SEARCH HEADER Message-ID " + Quote(messageId), token);
+        return response.Parts.Any(part => part.Line.StartsWith("* SEARCH ", StringComparison.OrdinalIgnoreCase)
+            && part.Line.Length > 9);
+    }
+
+    public async Task AppendSentAsync(string folder, byte[] mime, CancellationToken token = default)
+    {
+        if (mime.Length is < 1 or > 25_000_000) throw new IOException("The sent message exceeds the copy size limit.");
+        string tag = "A" + Interlocked.Increment(ref _tag).ToString("D4");
+        byte[] command = Encoding.UTF8.GetBytes($"{tag} APPEND {Quote(folder)} (\\Seen) {{{mime.Length}}}\r\n");
+        await _stream!.WriteAsync(command, token);
+        await _stream.FlushAsync(token);
+        while (true)
+        {
+            string line = await ReadLineAsync(token);
+            if (line.StartsWith('+')) break;
+            if (line.StartsWith(tag + " ", StringComparison.OrdinalIgnoreCase))
+                throw new IOException("IMAP: " + line[(tag.Length + 1)..]);
+        }
+        await _stream.WriteAsync(mime, token);
+        await _stream.WriteAsync("\r\n"u8.ToArray(), token);
+        await _stream.FlushAsync(token);
+        await ReadTaggedResponseAsync(tag, token);
+    }
+
     public async Task RenameFolderAsync(string oldName, string newName, CancellationToken token = default) =>
         await CommandAsync($"RENAME {Quote(oldName)} {Quote(newName)}", token);
 
-    public async Task<IReadOnlyList<MailItem>> SearchAsync(string folder, string query, int count = 100, CancellationToken token = default)
+    public async Task<IReadOnlyList<MailItem>> SearchAsync(string folder, string query, int count = 100,
+        CancellationToken token = default, bool sentFolder = false)
     {
         if (query.Length is < 1 or > 200) throw new ArgumentException("Search text must be between 1 and 200 characters.", nameof(query));
         await SelectAsync(folder, token);
@@ -205,7 +275,7 @@ public sealed class ImapSession : IAsyncDisposable
         foreach (uint uid in uids.TakeLast(count).Reverse())
         {
             token.ThrowIfCancellationRequested();
-            var item = await FetchSummaryAsync($"UID FETCH {uid}", token);
+            var item = await FetchSummaryAsync($"UID FETCH {uid}", token, sentFolder);
             if (item is not null) items.Add(item);
         }
         return items;
@@ -226,7 +296,7 @@ public sealed class ImapSession : IAsyncDisposable
         return await ReadTaggedResponseAsync(tag, token);
     }
 
-    private async Task<MailItem?> FetchSummaryAsync(string prefix, CancellationToken token)
+    private async Task<MailItem?> FetchSummaryAsync(string prefix, CancellationToken token, bool sentFolder = false)
     {
         var response = await CommandAsync($"{prefix} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])", token, 128_000);
         byte[]? literal = response.Parts.FirstOrDefault(p => p.Literal is not null)?.Literal;
@@ -238,7 +308,7 @@ public sealed class ImapSession : IAsyncDisposable
         var seqMatch = Regex.Match(meta, @"\* (\d+) FETCH", RegexOptions.IgnoreCase);
         var internalDateMatch = Regex.Match(meta, "\\bINTERNALDATE\\s+\"([^\"]+)\"", RegexOptions.IgnoreCase);
         DateTimeOffset? date = MailDateParser.Parse(headers.GetValueOrDefault("date"),
-            internalDateMatch.Success ? internalDateMatch.Groups[1].Value : null);
+            internalDateMatch.Success ? internalDateMatch.Groups[1].Value : null, sentFolder);
         string from = MimeReader.DecodeHeader(headers.GetValueOrDefault("from") ?? "");
         return new MailItem
         {

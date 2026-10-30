@@ -81,6 +81,7 @@ public sealed class MailItem : System.ComponentModel.INotifyPropertyChanged
 public sealed class MailFolder
 {
     public string ServerName { get; init; } = "INBOX";
+    public bool IsSent { get; set; }
     public char? Delimiter { get; init; } = '/';
     public bool CanSelect { get; init; } = true;
     public bool HasChildren { get; init; }
@@ -98,6 +99,7 @@ public sealed class MailFolder
         get
         {
             if (ServerName.Equals("INBOX", StringComparison.OrdinalIgnoreCase)) return Localizer.T("inbox");
+            if (IsSent) return Localizer.T("sentFolder");
             return Levels.LastOrDefault() ?? ImapFolderName.Decode(ServerName);
         }
     }
@@ -107,6 +109,7 @@ public sealed class MailContent
 {
     public string PlainText { get; init; } = "";
     public string HtmlText { get; init; } = "";
+    public UnsubscribeAction? Unsubscribe { get; init; }
     public string? CalendarText { get; init; }
     public IReadOnlyList<string> AttachmentNames { get; init; } = [];
     public IReadOnlyDictionary<string, InlineMailImage> InlineImages { get; init; } =
@@ -140,7 +143,7 @@ public sealed record InlineMailImage(string ContentType, byte[] Bytes)
     }
 }
 
-public sealed record InboxSnapshot(uint UidValidity, MailItem? Latest);
+public sealed record InboxSnapshot(uint UidValidity, MailItem? Latest, int UnreadCount);
 
 public sealed class CalendarInvite
 {

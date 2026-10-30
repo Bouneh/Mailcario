@@ -29,7 +29,7 @@
 
 | A clear workspace | Useful everyday tools | Privacy built in |
 | --- | --- | --- |
-| Outlook-inspired three-pane layout, resizable columns, folders, search, light and dark themes. | Multiple IMAP accounts, SMTP sending, replies, forwarding, attachments, signatures, rules and notifications. | Remote images stay blocked until you allow them. Suspected tracking pixels remain blocked. HTML scripts are disabled. |
+| Outlook-inspired three-pane layout, resizable columns, folders, working folder search, light and dark themes. | Multiple IMAP accounts, SMTP sending, replies, forwarding, attachments, signatures from any account, a local address book, rules and notifications. | Remote images stay blocked until you allow them. Suspected tracking pixels remain blocked. HTML scripts are disabled. |
 
 Mailcario is a **local Windows email client**. You do not need to host a server to read or send mail through your existing provider. Account settings stay on your PC; stored credentials are protected for your Windows user account.
 
@@ -38,6 +38,8 @@ Mailcario is a **local Windows email client**. You do not need to host a server 
 | Compose | Import Thunderbird accounts |
 | --- | --- |
 | ![Mailcario compose window](docs/images/compose-dark.png) | ![Importing Thunderbird IMAP accounts](docs/images/thunderbird-import.png) |
+
+The compose ribbon includes clipboard tools, rich-text formatting, color palettes, numbered lists and recipient checking. You can drag files into a draft and switch between saved signatures. Unread inbox counts appear on the taskbar icon; opening a message updates the count.
 
 <details>
 <summary><strong>Message privacy controls</strong></summary>

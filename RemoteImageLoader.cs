@@ -85,7 +85,7 @@ public static class RemoteImageLoader
         return new RemoteMailImage(image, "data:" + contentType + ";base64," + Convert.ToBase64String(data));
     }
 
-    private static async ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken token)
+    internal static async ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken token)
     {
         string host = context.DnsEndPoint.Host;
         if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))

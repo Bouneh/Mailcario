@@ -2,6 +2,8 @@ using System.Net;
 using System.Text;
 using System.Windows;
 using System.Windows.Documents;
+using System.Windows.Media;
+using System.Text.RegularExpressions;
 
 namespace Mailcario;
 
@@ -26,7 +28,11 @@ internal static class ComposeDocument
                 TextAlignment.Justify => "justify",
                 _ => "left"
             };
-            html.Append("<p style=\"text-align:").Append(alignment).Append(";margin:0 0 0.6em\">");
+            html.Append("<p style=\"text-align:").Append(alignment).Append(";margin:0 0 0.6em;");
+            if (paragraph.Margin.Left > 0)
+                html.Append("margin-left:").Append(paragraph.Margin.Left.ToString("0.#",
+                    System.Globalization.CultureInfo.InvariantCulture)).Append("px;");
+            html.Append("\">");
             if (paragraph.Inlines.Count == 0) html.Append("<br>");
             foreach (Inline inline in paragraph.Inlines) AppendInline(html, inline);
             html.Append("</p>");
@@ -78,6 +84,17 @@ internal static class ComposeDocument
             if (run.TextDecorations.Count > 0) style.Append("text-decoration:underline;");
             if (run.FontSize > 0) style.Append("font-size:").Append(run.FontSize.ToString("0.#",
                 System.Globalization.CultureInfo.InvariantCulture)).Append("px;");
+            string family = run.FontFamily.Source;
+            if (Regex.IsMatch(family, @"^[\p{L}\p{N} ,\-]{1,80}$"))
+                style.Append("font-family:'").Append(family).Append("';");
+            if (run.Foreground is SolidColorBrush foreground)
+            {
+                var themeInk = Application.Current?.TryFindResource("Ink") as SolidColorBrush;
+                if (foreground.Color.A > 0 && (themeInk is null || foreground.Color != themeInk.Color))
+                    style.Append("color:").Append(ToCssColor(foreground.Color)).Append(';');
+            }
+            if (run.Background is SolidColorBrush background && background.Color.A > 0)
+                style.Append("background-color:").Append(ToCssColor(background.Color)).Append(';');
             html.Append("<span style=\"").Append(style).Append("\">")
                 .Append(WebUtility.HtmlEncode(run.Text).Replace("\r\n", "<br>").Replace("\n", "<br>"))
                 .Append("</span>");
@@ -92,4 +109,6 @@ internal static class ComposeDocument
         else if (inline is Span span)
             foreach (Inline child in span.Inlines) AppendInline(html, child);
     }
+
+    private static string ToCssColor(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
 }

@@ -6,6 +6,36 @@ namespace Mailcario;
 
 public static class SmtpService
 {
+    public sealed record SendAndSaveResult(bool CopySaved, string? CopyError);
+
+    public static async Task<SendAndSaveResult> SendAndSaveAsync(MailAccount account, string password,
+        MailMessage message)
+    {
+        string messageId = "<" + Guid.NewGuid().ToString("N") + "@mailcario.local>";
+        message.Headers["Message-ID"] = messageId;
+        // Prepare the copy before SMTP sends: attachments may use streams that are
+        // no longer readable after the transport completes.
+        byte[] copy = Encoding.UTF8.GetBytes(OAuthSmtpSender.BuildMime(message));
+        await SendAsync(account, password, message);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            await using var session = await ImapSession.ConnectAsync(account, password, timeout.Token);
+            string sentFolder = await session.FindOrCreateSentFolderAsync(timeout.Token);
+            if (await session.ContainsMessageIdAsync(sentFolder, messageId, timeout.Token))
+                return new SendAndSaveResult(true, null);
+            await Task.Delay(900, timeout.Token);
+            if (await session.ContainsMessageIdAsync(sentFolder, messageId, timeout.Token))
+                return new SendAndSaveResult(true, null);
+            await session.AppendSentAsync(sentFolder, copy, timeout.Token);
+            return new SendAndSaveResult(true, null);
+        }
+        catch (Exception ex)
+        {
+            return new SendAndSaveResult(false, ex.Message);
+        }
+    }
+
     public static async Task SendAsync(MailAccount account, string password, MailMessage message)
     {
         if (account.AuthMethod is "microsoft-oauth" or "google-oauth")

@@ -62,7 +62,9 @@ public partial class MainWindow
         if (_trayOpenItem is not null) _trayOpenItem.Text = Localizer.T("openMailcarioTray");
         if (_trayQuitItem is not null) _trayQuitItem.Text = Localizer.T("quitMailcarioTray");
         if (_trayIcon is not null)
-            _trayIcon.Text = _hasMailAttention ? "Mailcario · " + Localizer.T("newMailNotification") : "Mailcario";
+            _trayIcon.Text = _hasMailAttention
+                ? "Mailcario · " + string.Format(Localizer.T("unreadInboxCount"), _unreadInboxTotal)
+                : "Mailcario";
     }
 
     private void SetMailAttention(bool active)
@@ -101,6 +103,16 @@ public partial class MainWindow
     {
         _exitRequested = true;
         Application.Current.Shutdown();
+    }
+
+    internal void ActivateFromSecondLaunch()
+    {
+        OpenFromMailNotice();
+        Window foreground = OwnedWindows.Cast<Window>().LastOrDefault(window => window.IsVisible) ?? this;
+        if (foreground.WindowState == WindowState.Minimized) foreground.WindowState = WindowState.Normal;
+        foreground.Topmost = true;
+        foreground.Topmost = false;
+        foreground.Activate();
     }
 
     private static DrawingIcon LoadApplicationIcon()

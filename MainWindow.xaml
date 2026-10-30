@@ -28,7 +28,11 @@
                 </Canvas>
               </Viewbox>
             </Button>
-            <TextBox x:Name="SearchBox" Grid.Column="1" Background="Transparent" BorderThickness="0" Padding="0,8,0,8" VerticalContentAlignment="Center" TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown"/>
+            <TextBox x:Name="SearchBox" Grid.Column="1" Background="Transparent" Foreground="{DynamicResource Ink}"
+                     CaretBrush="{DynamicResource Ink}" SelectionBrush="{DynamicResource Accent}" BorderThickness="0"
+                     Padding="0" VerticalContentAlignment="Center" TextChanged="SearchBox_TextChanged"
+                     GotKeyboardFocus="SearchBox_FocusChanged" LostKeyboardFocus="SearchBox_FocusChanged"
+                     KeyDown="SearchBox_KeyDown"/>
             <TextBlock x:Name="SearchHint" Grid.Column="1" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" IsHitTestVisible="False"/>
             <Button x:Name="ClearSearchButton" Grid.Column="2" Content="×" FontSize="18" Foreground="{DynamicResource Muted}" Background="Transparent" BorderThickness="0" Padding="0" Visibility="Collapsed" Click="ClearSearchButton_Click" ToolTip="Clear"/>
           </Grid>
@@ -368,6 +372,12 @@
           <Grid Grid.Row="3" Margin="20,17,20,17">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <StackPanel Grid.Row="0">
+              <Border x:Name="UnsubscribePanel" Background="{DynamicResource AccentSoft}" BorderBrush="{DynamicResource InviteStroke}" BorderThickness="1" CornerRadius="3" Padding="11,8" Margin="0,0,0,9" Visibility="Collapsed">
+                <DockPanel LastChildFill="True">
+                  <Button x:Name="UnsubscribeButton" DockPanel.Dock="Right" Margin="12,0,0,0" Padding="10,5" Click="UnsubscribeButton_Click"/>
+                  <TextBlock x:Name="UnsubscribeLabel" Foreground="{DynamicResource Ink}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </DockPanel>
+              </Border>
               <Border x:Name="BlockedImagesPanel" Background="{DynamicResource PrivacyBg}" BorderBrush="{DynamicResource PrivacyStroke}" BorderThickness="1" CornerRadius="3" Padding="11,8" Margin="0,0,0,9" Visibility="Collapsed">
                 <StackPanel>
                   <TextBlock x:Name="BlockedImagesLabel" Foreground="{DynamicResource AccentDark}" FontSize="12" TextWrapping="Wrap"/>
@@ -422,11 +432,24 @@
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <ProgressBar x:Name="SyncProgress" Width="48" Height="4" IsIndeterminate="True" Visibility="Collapsed" Margin="0,0,7,0"/>
           <TextBlock x:Name="SyncStatusText" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Center" Margin="0,0,16,0"/>
-          <Ellipse x:Name="ConnectionDot" Width="7" Height="7" Fill="{DynamicResource Muted}" Margin="0,0,6,0"/>
-          <TextBlock x:Name="ConnectionStatusText" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Center"/>
+          <Button x:Name="ConnectionStatusButton" Click="ConnectionStatusButton_Click" Background="Transparent" BorderThickness="0" Padding="3,1" Cursor="Hand">
+            <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="ConnectionDot" Width="7" Height="7" Fill="{DynamicResource Muted}" Margin="0,0,6,0"/>
+              <TextBlock x:Name="ConnectionStatusText" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
         </StackPanel>
       </Grid>
     </Border>
+
+    <Popup x:Name="ConnectionDetailsPopup" Placement="Top" PlacementTarget="{Binding ElementName=ConnectionStatusButton}"
+           VerticalOffset="-7" AllowsTransparency="True" StaysOpen="False">
+      <Border Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1"
+              CornerRadius="5" Padding="14" MinWidth="320" MaxWidth="430">
+        <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.3"/></Border.Effect>
+        <StackPanel x:Name="ConnectionDetailsPanel"/>
+      </Border>
+    </Popup>
 
     <Popup x:Name="LinkPreviewPopup" Placement="MousePoint" HorizontalOffset="14" VerticalOffset="18"
            AllowsTransparency="True" StaysOpen="True" IsHitTestVisible="False">
