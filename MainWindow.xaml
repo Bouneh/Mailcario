@@ -407,6 +407,9 @@
                 <Button x:Name="ForwardButton" Margin="6,0,0,0" Click="ForwardButton_Click" IsEnabled="False" Background="Transparent" Padding="8,5">
                   <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE89C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Foreground="{DynamicResource IconForward}" Margin="0,0,7,0"/><TextBlock x:Name="ForwardButtonLabel"/></StackPanel>
                 </Button>
+                <Button x:Name="MessageSourceButton" Margin="6,0,0,0" Click="MessageSourceButton_Click" IsEnabled="False" Background="Transparent" Padding="8,5">
+                  <StackPanel Orientation="Horizontal"><TextBlock Text="&lt;/&gt;" FontFamily="Consolas" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource IconNeutral}" Margin="0,0,7,0"/><TextBlock x:Name="MessageSourceButtonLabel"/></StackPanel>
+                </Button>
               </StackPanel>
             </StackPanel>
           </Border>

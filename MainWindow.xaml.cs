@@ -162,6 +162,7 @@ public partial class MainWindow : Window
         CalendarHint.Text = Localizer.T("localCalendar");
         ReplyButtonLabel.Text = Localizer.T("reply");
         ForwardButtonLabel.Text = Localizer.T("forward");
+        MessageSourceButtonLabel.Text = Localizer.T("messageSourceShort");
         AttachmentsLabel.Text = string.Format(Localizer.T("attachmentsCount"), _selectedContent?.Attachments.Count ?? 0);
         ReceivedAttachmentList.Items.Refresh();
         InviteHeading.Text = Localizer.T("invite");
@@ -673,7 +674,7 @@ public partial class MainWindow : Window
         HtmlBodyBox.Visibility = Visibility.Collapsed;
         HtmlWebView.Visibility = Visibility.Collapsed;
         PlainBodyScroller.Visibility = Visibility.Visible;
-        ReplyButton.IsEnabled = ForwardButton.IsEnabled = _selected is not null;
+        ReplyButton.IsEnabled = ForwardButton.IsEnabled = MessageSourceButton.IsEnabled = _selected is not null;
         if (_selected is null)
         {
             ReaderEmptyState.Visibility = Visibility.Visible;

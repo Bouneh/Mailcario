@@ -52,6 +52,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Undo send check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --contact-memory-check
           if ($LASTEXITCODE -ne 0) { throw 'Contact indexing and completion check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --message-source-check
+          if ($LASTEXITCODE -ne 0) { throw 'Message source and local MIME preservation check failed.' }
 
   release:
     name: Publish Windows installer

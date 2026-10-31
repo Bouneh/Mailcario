@@ -55,6 +55,8 @@ Use **+** beside **Local folders** to create a folder on this PC. Select one or 
 
 Received attachments are listed in the reading pane. You can download them, preview PDF, image and text files inside Mailcario, and print those previewable formats. Other file types can be saved and opened with a compatible application.
 
+Choose **Source** in the reading pane or **View message source** in a message's context menu to inspect its original headers and MIME text. Search or copy the displayed source, or save the complete original message as an `.eml` file. Large messages show a 2 MB preview first, with **Show all** available on demand.
+
 ### A closer look
 
 | Compose | Import Thunderbird accounts |

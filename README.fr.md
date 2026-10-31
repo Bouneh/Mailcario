@@ -55,6 +55,8 @@ Utilisez **+** à côté de **Dossiers locaux** pour créer un dossier sur ce PC
 
 Les pièces jointes reçues apparaissent dans le volet de lecture. Vous pouvez les télécharger, prévisualiser les PDF, images et fichiers texte dans Mailcario, et imprimer ces formats. Les autres types de fichiers peuvent être enregistrés puis ouverts avec une application compatible.
 
+Cliquez sur **Source** dans le volet de lecture ou sur **Afficher la source du message** dans le menu contextuel pour examiner les en-têtes et le contenu MIME d’origine. Vous pouvez rechercher et copier le texte affiché, ou enregistrer le message original complet au format `.eml`. Les gros messages s’ouvrent d’abord sur un aperçu de 2 Mo, avec **Afficher tout** à la demande.
+
 ### Aperçu
 
 | Rédaction | Import de comptes Thunderbird |

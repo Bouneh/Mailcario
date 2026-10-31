@@ -28,6 +28,7 @@ public partial class MainWindow
         {
             AddAction(menu, "copy", async () => await CopyMessageAsync(mail));
             AddAction(menu, "quickPrint", async () => await PrintMessageAsync(mail));
+            AddAction(menu, "messageSource", () => ShowMessageSource(mail));
             menu.Items.Add(NewSeparator());
             AddAction(menu, "reply", async () => await ComposeReplyAsync(mail, false));
             AddAction(menu, "forward", async () => await ComposeForwardAsync(mail));
@@ -43,6 +44,7 @@ public partial class MainWindow
         }
         AddAction(menu, "copy", async () => await CopyMessageAsync(mail));
         AddAction(menu, "quickPrint", async () => await PrintMessageAsync(mail));
+        AddAction(menu, "messageSource", () => ShowMessageSource(mail));
         menu.Items.Add(NewSeparator());
         AddAction(menu, "reply", async () => await ComposeReplyAsync(mail, false));
         AddAction(menu, "replyAll", async () => await ComposeReplyAsync(mail, true));
@@ -193,6 +195,7 @@ public partial class MainWindow
         {
             "copy" => "M7,5 L17,5 17,18 7,18 Z M4,15 L3,15 3,2 13,2 13,4",
             "quickPrint" => "M5,3 L15,3 15,7 M5,14 L2,14 2,8 18,8 18,14 15,14 M5,12 L15,12 15,18 5,18 Z",
+            "messageSource" => "M7,5 L3,10 7,15 M13,5 L17,10 13,15 M11,3 L9,17",
             "reply" => "M9,4 L3,10 9,16 M3,10 L12,10 C16,10 18,13 18,17",
             "replyAll" => "M7,4 L2,10 7,16 M2,10 L11,10 C15,10 18,13 18,17 M11,4 L6,9",
             "forward" => "M11,4 L17,10 11,16 M17,10 L8,10 C4,10 2,13 2,17",

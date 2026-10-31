@@ -17,6 +17,60 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--message-source-check")
+        {
+            string root = Path.Combine(AppContext.BaseDirectory, "Mailcario-source-check-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                byte[] raw = Encoding.UTF8.GetBytes("From: Alice <alice@example.invalid>\r\n" +
+                    "Subject: Test source\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" +
+                    "<script>alert('never run')</script>\r\nBonjour été");
+                var store = new LocalMailStore(root);
+                string folderId = store.CreateFolder("Saved").Id;
+                var message = new MailItem { Subject = "Test source", From = "Alice <alice@example.invalid>" };
+                string id = store.CopyMessage(folderId, "self@example.invalid", "INBOX", message, raw).Id;
+                if (!store.LoadRawMessage(id).SequenceEqual(raw))
+                    throw new InvalidOperationException("The local copy did not preserve the original MIME bytes.");
+
+                var sourceCheckApp = new App();
+                sourceCheckApp.InitializeComponent();
+                ThemeManager.Initialize("dark");
+                var viewer = new MessageSourceWindow(message.Subject,
+                    _ => Task.FromResult(store.LoadRawMessage(id)));
+                try
+                {
+                    viewer.Show();
+                    var source = (TextBox)viewer.FindName("SourceBox");
+                    if (!source.IsReadOnly || !source.Text.Contains("Subject: Test source") ||
+                        source.Text.Contains("<script>"))
+                        throw new InvalidOperationException("The header view is not plain, isolated header text.");
+                    ((Button)viewer.FindName("FullSourceButton")).RaiseEvent(
+                        new RoutedEventArgs(Button.ClickEvent));
+                    if (!source.Text.Contains("<script>alert('never run')</script>") ||
+                        !source.Text.Contains("Bonjour été"))
+                        throw new InvalidOperationException("The original MIME source was not shown as text.");
+                    if (args.Length > 1)
+                    {
+                        viewer.UpdateLayout();
+                        int width = (int)Math.Ceiling(viewer.ActualWidth);
+                        int height = (int)Math.Ceiling(viewer.ActualHeight);
+                        var image = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                        image.Render(viewer);
+                        using var previewStream = File.Create(args[1]);
+                        var encoder = new PngBitmapEncoder();
+                        encoder.Frames.Add(BitmapFrame.Create(image));
+                        encoder.Save(previewStream);
+                    }
+                }
+                finally { viewer.Close(); ThemeManager.Shutdown(); }
+                Console.WriteLine("Raw .eml bytes preserved; headers and full source displayed as read-only text.");
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+            return;
+        }
         if (args.Length > 0 && args[0] == "--contact-memory-check")
         {
             string path = Path.Combine(AppContext.BaseDirectory, "Mailcario-contact-check-" + Guid.NewGuid().ToString("N") + ".json");
@@ -742,7 +796,8 @@ internal static class Program
             { RoutedEvent = UIElement.PreviewMouseRightButtonDownEvent };
             row.RaiseEvent(rightClick);
             bool passed = rightClick.Handled && row.ContextMenu?.IsOpen == true &&
-                row.ContextMenu.Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == Localizer.T("rules"));
+                row.ContextMenu.Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == Localizer.T("rules")) &&
+                row.ContextMenu.Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == Localizer.T("messageSource"));
             if ((args[0] is "--context-menu-preview" or "--context-menu-preview-light") &&
                 row.ContextMenu is { } previewMenu)
             {

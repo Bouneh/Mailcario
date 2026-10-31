@@ -158,6 +158,15 @@ public sealed class LocalMailStore
         }
     }
 
+    public byte[] LoadRawMessage(string id)
+    {
+        lock (_gate)
+        {
+            if (!Load().Messages.Any(m => m.Id == id)) throw new FileNotFoundException("Local message not found.");
+            return File.ReadAllBytes(MessagePath(id));
+        }
+    }
+
     public void SetRead(string id, bool read)
     {
         lock (_gate)
