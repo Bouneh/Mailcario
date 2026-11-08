@@ -231,6 +231,30 @@ public sealed class ImapSession : IAsyncDisposable
     public async Task CreateFolderAsync(string name, CancellationToken token = default) =>
         await CommandAsync("CREATE " + Quote(name), token);
 
+    public async Task DeleteFolderAsync(string name, CancellationToken token = default) =>
+        await CommandAsync("DELETE " + Quote(name), token);
+
+    public async Task CopyAllMessagesAsync(string source, string target, CancellationToken token = default)
+    {
+        int count = await SelectAsync(source, token);
+        if (count > 0) await CommandAsync("COPY 1:* " + Quote(target), token);
+    }
+
+    public async Task MoveAllMessagesAsync(string source, string target, CancellationToken token = default)
+    {
+        if (source.Equals(target, StringComparison.OrdinalIgnoreCase)) return;
+        int count = await SelectAsync(source, token);
+        if (count > 0) await CommandAsync("MOVE 1:* " + Quote(target), token);
+    }
+
+    public async Task ExpungeAllMessagesAsync(string folder, CancellationToken token = default)
+    {
+        int count = await SelectAsync(folder, token);
+        if (count == 0) return;
+        await CommandAsync("STORE 1:* +FLAGS.SILENT (\\Deleted)", token);
+        await CommandAsync("EXPUNGE", token);
+    }
+
     public async Task<string> FindOrCreateSentFolderAsync(CancellationToken token = default)
     {
         var folders = await ListFoldersAsync(token);

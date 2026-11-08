@@ -12,6 +12,9 @@
     <SolidColorBrush x:Key="SurfaceAlt" Color="#303030"/>
     <SolidColorBrush x:Key="Hover" Color="#353535"/>
     <SolidColorBrush x:Key="Selected" Color="#414141"/>
+    <SolidColorBrush x:Key="UnreadSurface" Color="#24394C"/>
+    <SolidColorBrush x:Key="UnreadHover" Color="#2C4559"/>
+    <SolidColorBrush x:Key="UnreadSelected" Color="#315976"/>
     <SolidColorBrush x:Key="TitleBar" Color="#171717"/>
     <SolidColorBrush x:Key="Rail" Color="#171717"/>
     <SolidColorBrush x:Key="SearchField" Color="#303030"/>
@@ -162,13 +165,13 @@
       <Setter Property="Background" Value="{DynamicResource Surface}"/>
       <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
       <Setter Property="MinWidth" Value="348"/>
-      <Setter Property="MaxHeight" Value="620"/>
+      <Setter Property="MaxHeight" Value="1000"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ContextMenu">
             <Border Background="{TemplateBinding Background}" BorderBrush="{DynamicResource Stroke}"
                     BorderThickness="1" CornerRadius="7" Padding="4">
-              <ScrollViewer MaxHeight="610" VerticalScrollBarVisibility="Auto"
+              <ScrollViewer MaxHeight="{TemplateBinding MaxHeight}" VerticalScrollBarVisibility="Auto"
                             HorizontalScrollBarVisibility="Disabled" CanContentScroll="True">
                 <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"/>
               </ScrollViewer>

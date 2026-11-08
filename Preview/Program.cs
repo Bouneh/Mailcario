@@ -17,6 +17,115 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] is "--navigation-menu-check" or "--folder-menu-preview")
+        {
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var main = new MainWindow { WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -4000, Top = -4000, Width = 1100, Height = 750,
+                WindowState = WindowState.Normal, ShowInTaskbar = false, ShowActivated = false };
+            var loaded = typeof(MainWindow).GetMethod("MainWindow_Loaded", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            main.Loaded -= (RoutedEventHandler)Delegate.CreateDelegate(typeof(RoutedEventHandler), main, loaded);
+            var rendered = typeof(MainWindow).GetMethod("MainWindow_ContentRendered", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            main.ContentRendered -= (EventHandler)Delegate.CreateDelegate(typeof(EventHandler), main, rendered);
+            try
+            {
+                main.Show();
+                var account = new MailAccount { Email = "self@example.invalid" };
+                typeof(MainWindow).GetField("_accounts", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(main, new[] { account });
+                typeof(MainWindow).GetField("_account", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(main, account);
+                var folders = new[]
+                {
+                    new MailFolder { ServerName = "INBOX" },
+                    new MailFolder { ServerName = "INBOX/Projects" },
+                    new MailFolder { ServerName = "INBOX/Projects/Archive" },
+                    new MailFolder { ServerName = "Sent", IsSent = true }
+                };
+                typeof(MainWindow).GetField("_allFolders", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(main, folders);
+                typeof(MainWindow).GetMethod("ApplyFolderList", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(main, null);
+                main.UpdateLayout();
+                var folderListCheck = (ListBox)main.FindName("FolderList");
+                var row = (ListBoxItem?)folderListCheck.ItemContainerGenerator.ContainerFromItem(folderListCheck.Items.OfType<MailFolder>()
+                    .Single(folder => folder.ServerName == "INBOX/Projects"));
+                if (row is null) throw new InvalidOperationException("The folder row did not render.");
+                var rightClick = new System.Windows.Input.MouseButtonEventArgs(
+                    System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Right)
+                { RoutedEvent = UIElement.PreviewMouseRightButtonDownEvent };
+                row.RaiseEvent(rightClick);
+                ContextMenu menu = row.ContextMenu ?? throw new InvalidOperationException("The folder menu is missing.");
+                string[] required = ["openFolderWindow", "newFolder", "renameFolder", "copyFolder", "moveFolder",
+                    "deleteFolder", "markFolderRead", "deleteFolderContents", "imapFolders", "addFolderFavorite",
+                    "sortSubfolders", "moveFolderUp", "moveFolderDown", "folderProperties"];
+                if (!rightClick.Handled || required.Any(key => !menu.Items.OfType<MenuItem>()
+                    .Any(item => item.Header?.ToString() == Localizer.T(key))) ||
+                    menu.MaxHeight < Math.Max(320, SystemParameters.WorkArea.Height - 28))
+                    throw new InvalidOperationException("The folder menu is incomplete or too short.");
+                if (args[0] == "--folder-menu-preview")
+                {
+                    menu.Measure(new Size(400, menu.MaxHeight));
+                    int width = Math.Max(400, (int)Math.Ceiling(menu.DesiredSize.Width));
+                    int height = Math.Max(100, (int)Math.Ceiling(menu.DesiredSize.Height));
+                    menu.Arrange(new Rect(0, 0, width, height));
+                    menu.UpdateLayout();
+                    var image = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                    image.Render(menu);
+                    string path = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "folder-menu-preview.png");
+                    using var stream = File.Create(path);
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(image));
+                    encoder.Save(stream);
+                    Console.WriteLine(path);
+                }
+                var folderView = (FolderViewState)typeof(MainWindow)
+                    .GetField("_folderView", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(main)!;
+                folderView.FavoriteFolders.Add("INBOX/Projects");
+                typeof(MainWindow).GetMethod("RefreshFavoriteFolders", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(main, null);
+                if (((Panel)main.FindName("FavoriteFoldersPanel")).Children.Count != 1)
+                    throw new InvalidOperationException("The favorite folder was not shown.");
+                menu.IsOpen = false;
+
+                var older = new MailItem { Uid = 11, AccountEmail = account.Email, FolderName = "INBOX",
+                    From = "Alice <alice@example.invalid>", Subject = "Older" };
+                var notified = new MailItem { Uid = 12, AccountEmail = account.Email, FolderName = "INBOX",
+                    From = "Bob <bob@example.invalid>", Subject = "New mail" };
+                typeof(MainWindow).GetField("_messages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(main, new[] { older, notified });
+                var visible = (System.Collections.ObjectModel.ObservableCollection<MailItem>)
+                    typeof(MainWindow).GetField("_visibleMessages", BindingFlags.NonPublic | BindingFlags.Instance)!
+                        .GetValue(main)!;
+                visible.Clear(); visible.Add(older);
+                visible.Add(new MailItem { Uid = 12, AccountEmail = account.Email, FolderName = "INBOX",
+                    From = "Bob <bob@example.invalid>", Subject = "New mail" });
+                ((TextBox)main.FindName("SearchBox")).Text = "Older";
+                typeof(MainWindow).GetMethod("SelectNotifiedMessage", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(main, [account.Email, "INBOX", (uint)12]);
+                if (((TextBox)main.FindName("SearchBox")).Text.Length > 0 ||
+                    ((ListBox)main.FindName("MessageList")).SelectedItem is not MailItem selected ||
+                    selected.Uid != notified.Uid)
+                    throw new InvalidOperationException("Notification navigation did not select the matching message.");
+                if (!((Button)main.FindName("RibbonDelete")).IsEnabled)
+                    throw new InvalidOperationException("The Home ribbon delete action did not enable for a selected message.");
+                main.ShowInTaskbar = true;
+                main.Close();
+                if (!main.IsVisible || !main.ShowInTaskbar || main.WindowState != WindowState.Minimized)
+                    throw new InvalidOperationException("Closing the main window removed it from the taskbar.");
+                Console.WriteLine("Folder menu, favorites, notification selection, and taskbar closing passed.");
+            }
+            finally
+            {
+                typeof(MainWindow).GetField("_exitRequested", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(main, true);
+                main.Close();
+                ThemeManager.Shutdown();
+            }
+            return;
+        }
         if (args.Length > 0 && args[0] == "--message-source-check")
         {
             string root = Path.Combine(AppContext.BaseDirectory, "Mailcario-source-check-" + Guid.NewGuid().ToString("N"));
@@ -207,11 +316,11 @@ internal static class Program
             }
             return;
         }
-        if (args.Length > 0 && args[0] == "--unified-preview")
+        if (args.Length > 0 && args[0] is "--unified-preview" or "--unified-preview-light")
         {
             var previewApp = new App();
             previewApp.InitializeComponent();
-            ThemeManager.Initialize("dark");
+            ThemeManager.Initialize(args[0] == "--unified-preview-light" ? "light" : "dark");
             var window = new MainWindow();
             var accounts = new[] { new MailAccount { Email = "first@example.invalid" },
                 new MailAccount { Email = "second@example.invalid" } };
@@ -801,7 +910,7 @@ internal static class Program
             if ((args[0] is "--context-menu-preview" or "--context-menu-preview-light") &&
                 row.ContextMenu is { } previewMenu)
             {
-                previewMenu.Measure(new Size(348, 620));
+                previewMenu.Measure(new Size(348, previewMenu.MaxHeight));
                 int width = Math.Max(348, (int)Math.Ceiling(previewMenu.DesiredSize.Width));
                 int height = Math.Max(100, (int)Math.Ceiling(previewMenu.DesiredSize.Height));
                 previewMenu.Arrange(new Rect(0, 0, width, height));

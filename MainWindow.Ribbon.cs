@@ -42,6 +42,7 @@ public partial class MainWindow
         RibbonMarkUnread.Content = Localizer.T("markUnread");
         RibbonRefresh.Content = Localizer.T("refresh");
         RibbonRules.Content = Localizer.T("rules");
+        RibbonDelete.Content = Localizer.T("delete");
         RibbonSyncAll.Content = Localizer.T("syncAll");
         RibbonSyncFolder.Content = Localizer.T("syncFolder");
         RibbonCancelSync.Content = Localizer.T("cancelSync");
@@ -93,7 +94,7 @@ public partial class MainWindow
     {
         if (!IsInitialized) return;
         bool hasMessage = _selected is not null;
-        RibbonReply.IsEnabled = RibbonForward.IsEnabled = RibbonMarkRead.IsEnabled = RibbonMarkUnread.IsEnabled = hasMessage;
+        RibbonReply.IsEnabled = RibbonForward.IsEnabled = RibbonMarkRead.IsEnabled = RibbonMarkUnread.IsEnabled = RibbonDelete.IsEnabled = hasMessage;
         RibbonRenameFolder.IsEnabled = _localFolderId is null && !_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase);
         FileEditAccount.IsEnabled = _accounts.Count > 0;
         FileSwitchAccount.IsEnabled = _accounts.Count > 0;
@@ -337,6 +338,12 @@ public partial class MainWindow
     {
         if (_selected is not { } mail) return;
         await SetMessageReadAsync(mail, false);
+    }
+    private async void RibbonDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is not { } mail) return;
+        if (mail.LocalId.Length > 0) DeleteLocalMessage(mail);
+        else await MoveToSpecialFolderAsync(mail, "trash");
     }
     private async void RibbonMarkFolderRead_Click(object sender, RoutedEventArgs e)
     {

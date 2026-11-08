@@ -26,7 +26,7 @@ public partial class MainWindow
         {
             if (_exitRequested || _trayIcon is null) return;
             e.Cancel = true;
-            Hide();
+            WindowState = WindowState.Minimized;
         };
         Closed += (_, _) => DisposeTrayIcon();
     }
@@ -107,6 +107,7 @@ public partial class MainWindow
 
     internal void QuitMailcario()
     {
+        if (_secondaryWindow) { Close(); return; }
         _exitRequested = true;
         Application.Current.Shutdown();
     }

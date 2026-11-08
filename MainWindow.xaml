@@ -95,6 +95,7 @@
                   <Button x:Name="RibbonMarkUnread" Click="RibbonMarkUnread_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE715;" BorderBrush="{DynamicResource IconNeutral}" Margin="0,0,3,0"/>
                   <Button x:Name="RibbonRefresh" Click="RefreshButton_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE72C;" BorderBrush="{DynamicResource IconSync}"/>
                   <Button x:Name="RibbonRules" Click="RibbonRules_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE71C;" BorderBrush="{DynamicResource IconFolder}"/>
+                  <Button x:Name="RibbonDelete" Click="RibbonDelete_Click" Style="{StaticResource RibbonCommandButton}" Tag="&#xE74D;" BorderBrush="{DynamicResource IconDanger}" Margin="3,0,0,0"/>
                 </StackPanel>
                 <TextBlock x:Name="RibbonManageGroupCaption" Foreground="{DynamicResource Muted}" FontSize="10" TextAlignment="Center" Margin="0,4,0,0"/>
               </StackPanel>
@@ -210,6 +211,7 @@
                 <TextBlock x:Name="InboxButtonLabel" VerticalAlignment="Center"/>
               </StackPanel>
             </Button>
+            <StackPanel x:Name="FavoriteFoldersPanel" Margin="0,0,0,5"/>
             <Button x:Name="CalendarButton" Visibility="Collapsed" Style="{StaticResource NavButton}" Margin="0,0,0,25" Click="CalendarButton_Click">
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                 <Viewbox Width="17" Height="17" Margin="0,0,12,0"><Path Data="M3,4 L17,4 L17,18 L3,18 Z M3,8 L17,8 M7,2 L7,6 M13,2 L13,6" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" Fill="Transparent"/></Viewbox>
@@ -341,10 +343,32 @@
                   <EventSetter Event="PreviewMouseRightButtonDown" Handler="MessageItem_PreviewMouseRightButtonDown"/>
                   <Setter Property="Template">
                     <Setter.Value><ControlTemplate TargetType="ListBoxItem">
-                      <Border x:Name="Chrome" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1"><ContentPresenter/></Border>
+                      <Grid>
+                        <Border x:Name="Chrome" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Stroke}" BorderThickness="0,0,0,1"><ContentPresenter/></Border>
+                        <Border x:Name="UnreadAccent" Width="3" Background="{DynamicResource AccentDark}" HorizontalAlignment="Left" Visibility="Collapsed" IsHitTestVisible="False"/>
+                      </Grid>
                       <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsRead}" Value="False">
+                          <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource UnreadSurface}"/>
+                          <Setter TargetName="UnreadAccent" Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
                         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Hover}"/></Trigger>
                         <Trigger Property="IsSelected" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Selected}"/><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource SelectedStroke}"/></Trigger>
+                        <MultiDataTrigger>
+                          <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsRead}" Value="False"/>
+                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource TemplatedParent}}" Value="True"/>
+                          </MultiDataTrigger.Conditions>
+                          <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource UnreadHover}"/>
+                        </MultiDataTrigger>
+                        <MultiDataTrigger>
+                          <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsRead}" Value="False"/>
+                            <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}}" Value="True"/>
+                          </MultiDataTrigger.Conditions>
+                          <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource UnreadSelected}"/>
+                          <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentDark}"/>
+                        </MultiDataTrigger>
                       </ControlTemplate.Triggers>
                     </ControlTemplate></Setter.Value>
                   </Setter>
@@ -354,18 +378,24 @@
                 <DataTemplate>
                   <Grid Margin="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentDark}" VerticalAlignment="Top" Margin="0,5,0,0">
+                    <Ellipse Width="7" Height="7" Fill="{DynamicResource AccentDark}" VerticalAlignment="Top" Margin="0,5,0,0">
                       <Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding IsRead}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Ellipse.Style>
                     </Ellipse>
                     <StackPanel Grid.Column="1">
                       <DockPanel LastChildFill="True">
-                        <TextBlock Text="{Binding DateLabel}" DockPanel.Dock="Right" FontSize="10" Foreground="{DynamicResource Muted}" Margin="8,2,0,0"/>
+                        <TextBlock Text="{Binding DateLabel}" DockPanel.Dock="Right" FontSize="10" Margin="8,2,0,0">
+                          <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource Muted}"/><Style.Triggers><DataTrigger Binding="{Binding IsRead}" Value="False"><Setter Property="Foreground" Value="{DynamicResource AccentDark}"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                        </TextBlock>
                         <TextBlock Text="&#xE7C1;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" DockPanel.Dock="Right" FontSize="12" Foreground="{DynamicResource IconDanger}" Margin="6,1,0,0">
                           <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsFlagged}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                         </TextBlock>
-                        <TextBlock Text="{Binding Correspondent}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Correspondent}" FontSize="12" TextTrimming="CharacterEllipsis">
+                          <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource Ink}"/><Setter Property="FontWeight" Value="Normal"/><Style.Triggers><DataTrigger Binding="{Binding IsRead}" Value="False"><Setter Property="Foreground" Value="{DynamicResource AccentDark}"/><Setter Property="FontWeight" Value="Bold"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                        </TextBlock>
                       </DockPanel>
-                      <TextBlock Text="{Binding Subject}" Foreground="{DynamicResource Ink}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+                      <TextBlock Text="{Binding Subject}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0">
+                        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource Muted}"/><Style.Triggers><DataTrigger Binding="{Binding IsRead}" Value="False"><Setter Property="Foreground" Value="{DynamicResource Ink}"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                      </TextBlock>
                       <Border Background="{Binding CategoryColor}" CornerRadius="4" HorizontalAlignment="Left" Padding="5,1" Margin="0,4,0,0">
                         <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasCategory}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style>
                         <TextBlock Text="{Binding CategoryName}" Foreground="White" FontSize="10"/>

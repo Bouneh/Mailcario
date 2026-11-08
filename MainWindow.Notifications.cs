@@ -24,6 +24,7 @@ public partial class MainWindow
     private int _activeSyncOperations;
     private string? _lastNotifiedAccount;
     private string _lastNotifiedFolder = "INBOX";
+    private uint _lastNotifiedUid;
     private DateTimeOffset? _lastSuccessfulSync;
     private readonly Dictionary<string, int> _unreadInboxCounts = new(StringComparer.OrdinalIgnoreCase);
     private int _displayedUnreadCount = -1;
@@ -31,7 +32,7 @@ public partial class MainWindow
 
     private void InitializeNotifications()
     {
-        InitializeTrayEvents();
+        if (!_secondaryWindow) InitializeTrayEvents();
         TaskbarItemInfo = new TaskbarItemInfo();
         _mailTimer.Tick += async (_, _) => await PollAllAccountsAsync();
         Closed += (_, _) =>
@@ -282,6 +283,7 @@ public partial class MainWindow
     {
         _lastNotifiedAccount = email;
         _lastNotifiedFolder = folder;
+        _lastNotifiedUid = item.Uid;
         string folderName = (email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase)
             ? _allFolders.FirstOrDefault(value => value.ServerName.Equals(folder,
                 StringComparison.OrdinalIgnoreCase))?.DisplayName : null)
@@ -307,6 +309,7 @@ public partial class MainWindow
             value.Email.Equals(_lastNotifiedAccount, StringComparison.OrdinalIgnoreCase));
         if (account is null) return;
         string folder = _lastNotifiedFolder;
+        uint uid = _lastNotifiedUid;
         if (!account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase))
         {
             _updatingAccounts = true;
@@ -315,6 +318,35 @@ public partial class MainWindow
             if (!await SwitchAccountAsync(account)) return;
         }
         await NavigateToFolderAsync(folder);
+        SelectNotifiedMessage(account.Email, folder, uid);
+    }
+
+    private void SelectNotifiedMessage(string email, string folder, uint uid)
+    {
+        if (uid == 0) return;
+        MailItem? match = _messages.FirstOrDefault(message => message.Uid == uid &&
+            message.AccountEmail.Equals(email, StringComparison.OrdinalIgnoreCase) &&
+            message.FolderName.Equals(folder, StringComparison.OrdinalIgnoreCase));
+        if (match is null) return;
+        if (_unreadOnly)
+        {
+            _unreadOnly = false;
+            UpdateMessageFilterButtons();
+        }
+        if (SearchBox.Text.Length > 0)
+        {
+            _searchCts?.Cancel();
+            SearchBox.Clear();
+            _searchResults = null;
+        }
+        FilterMessages();
+        MailItem? visible = _visibleMessages.FirstOrDefault(message => message.Uid == uid &&
+            message.AccountEmail.Equals(email, StringComparison.OrdinalIgnoreCase) &&
+            message.FolderName.Equals(folder, StringComparison.OrdinalIgnoreCase));
+        if (visible is null) return;
+        MessageList.SelectedItem = visible;
+        MessageList.ScrollIntoView(visible);
+        MessageList.Focus();
     }
 
     private void SetInboxUnreadCount(string email, int count)

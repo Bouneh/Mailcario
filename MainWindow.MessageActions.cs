@@ -21,7 +21,8 @@ public partial class MainWindow
         string sourceFolder = FolderFor(mail);
         var menu = new ContextMenu
         {
-            Style = (Style)Application.Current.FindResource("MailMessageContextMenuStyle")
+            Style = (Style)Application.Current.FindResource("MailMessageContextMenuStyle"),
+            MaxHeight = Math.Max(320, SystemParameters.WorkArea.Height - 28)
         };
         row.ContextMenu = menu;
         if (mail.LocalId.Length > 0)
@@ -194,6 +195,20 @@ public partial class MainWindow
         string data = key switch
         {
             "copy" => "M7,5 L17,5 17,18 7,18 Z M4,15 L3,15 3,2 13,2 13,4",
+            "openFolderWindow" => "M2,5 L18,5 18,18 2,18 Z M5,2 L15,2 M14,9 L18,5",
+            "newFolder" => "M2,6 L8,6 10,8 17,8 17,17 2,17 Z M10,10 L10,15 M7.5,12.5 L12.5,12.5",
+            "renameFolder" => "M2,6 L8,6 10,8 17,8 17,17 2,17 Z M7,14 L13,8 M12,7 L14,9",
+            "copyFolder" => "M2,6 L8,6 10,8 15,8 15,16 2,16 Z M6,18 L18,18 18,10",
+            "moveFolder" => "M2,6 L8,6 10,8 16,8 16,16 2,16 Z M10,12 L19,12 M16,9 L19,12 16,15",
+            "deleteFolder" => "M2,6 L8,6 10,8 17,8 17,17 2,17 Z M9,10 L14,15 M14,10 L9,15",
+            "cleanFolder" => "M2,6 L8,6 10,8 17,8 17,17 2,17 Z M7,13 L10,15 15,10",
+            "deleteFolderContents" => "M2,6 L8,6 10,8 17,8 17,17 2,17 Z M7,11 L13,11 M7,14 L13,14",
+            "imapFolders" => "M2,5 L8,5 10,7 18,7 18,17 2,17 Z M6,10 L14,10 M6,13 L12,13",
+            "addFolderFavorite" or "removeFolderFavorite" => "M10,2 L12.3,7 18,7.5 13.8,11.5 15,17 10,14 5,17 6.2,11.5 2,7.5 7.7,7 Z",
+            "sortSubfolders" or "useServerFolderOrder" => "M2,4 L10,4 M2,8 L8,8 M2,12 L6,12 M15,3 L15,17 M12,14 L15,17 18,14",
+            "moveFolderUp" => "M10,17 L10,3 M5,8 L10,3 15,8",
+            "moveFolderDown" => "M10,3 L10,17 M5,12 L10,17 15,12",
+            "folderProperties" => "M4,2 L16,2 16,18 4,18 Z M7,7 L13,7 M7,10 L13,10 M7,13 L11,13",
             "quickPrint" => "M5,3 L15,3 15,7 M5,14 L2,14 2,8 18,8 18,14 15,14 M5,12 L15,12 15,18 5,18 Z",
             "messageSource" => "M7,5 L3,10 7,15 M13,5 L17,10 13,15 M11,3 L9,17",
             "reply" => "M9,4 L3,10 9,16 M3,10 L12,10 C16,10 18,13 18,17",
@@ -221,9 +236,10 @@ public partial class MainWindow
         {
             "reply" or "replyAll" => "IconReply",
             "forward" => "IconForward",
-            "delete" or "deleteLocalMessage" or "junk" or "moveToJunk" or "blockSender" => "IconDanger",
+            "delete" or "deleteLocalMessage" or "deleteFolder" or "deleteFolderContents" or "junk" or "moveToJunk" or "blockSender" => "IconDanger",
             "archive" or "markReadArchive" or "snooze" or "snoozeHour" or "snoozeTomorrow" or "snoozeWeek" or "snoozeCustom" => "IconSync",
-            "move" or "copyToLocalFolder" or "newLocalFolder" or "rules" or "createRule" or "manageRules" => "IconFolder",
+            "move" or "copyToLocalFolder" or "newLocalFolder" or "rules" or "createRule" or "manageRules" or
+                "newFolder" or "renameFolder" or "copyFolder" or "moveFolder" or "imapFolders" or "folderProperties" => "IconFolder",
             "enableFolderNotifications" or "disableFolderNotifications" => "IconSync",
             _ => "IconNeutral"
         };

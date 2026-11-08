@@ -65,12 +65,19 @@ public partial class MainWindow : Window
     private readonly MailOrganizationStore _organization = new();
     private readonly DispatcherTimer _snoozeTimer = new() { Interval = TimeSpan.FromMinutes(1) };
     private bool _unifiedMode;
+    private readonly bool _secondaryWindow;
+    private readonly string? _initialAccountEmail;
+    private readonly string? _initialFolderName;
     private readonly Dictionary<(string Email, string Folder), int> _globalSearchCursors = [];
 
     public MainWindow() : this(null) { }
 
-    public MainWindow(LocalMailStore? localMailStore, ScheduledMailStore? scheduledMailStore = null)
+    public MainWindow(LocalMailStore? localMailStore, ScheduledMailStore? scheduledMailStore = null,
+        bool secondaryWindow = false, string? initialAccountEmail = null, string? initialFolderName = null)
     {
+        _secondaryWindow = secondaryWindow;
+        _initialAccountEmail = initialAccountEmail;
+        _initialFolderName = initialFolderName;
         _localMailStore = localMailStore ?? new LocalMailStore();
         _scheduledStore = scheduledMailStore ?? new ScheduledMailStore();
         InitializeComponent();
@@ -112,19 +119,23 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         _accounts = AccountStore.LoadAccounts();
-        string? active = AccountStore.LoadActiveEmail();
+        string? active = _initialAccountEmail ?? AccountStore.LoadActiveEmail();
         _account = _accounts.FirstOrDefault(x => x.Email.Equals(active, StringComparison.OrdinalIgnoreCase)) ?? _accounts.FirstOrDefault();
         _password = _account is null ? null : AccountStore.LoadPassword(_account.Email);
+        if (_initialFolderName is not null) _folder = _initialFolderName;
         RestoreFolderView();
         RefreshAccountList();
         RefreshLocalFolders();
         UpdateConnectionStatus();
-        if ((_account is null || _password is null) && _localMailStore.ListFolders().Count == 0)
+        if (!_secondaryWindow && (_account is null || _password is null) && _localMailStore.ListFolders().Count == 0)
             ShowAccountWindow(_account);
         if (_account is not null && _password is not null) await RefreshAsync(true);
-        ConfigureMailTimer();
-        StartContactHistoryIndex();
-        await PollAllAccountsAsync();
+        if (!_secondaryWindow)
+        {
+            ConfigureMailTimer();
+            StartContactHistoryIndex();
+            await PollAllAccountsAsync();
+        }
     }
 
     private void ApplyLanguage()

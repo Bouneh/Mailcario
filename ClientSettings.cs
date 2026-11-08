@@ -72,4 +72,7 @@ public sealed class FolderViewState
     public List<string> HiddenFolders { get; set; } = [];
     public List<string> CollapsedFolders { get; set; } = [];
     public List<string> NotificationFolders { get; set; } = ["INBOX"];
+    public List<string> FavoriteFolders { get; set; } = [];
+    public List<string> ManualFolderOrder { get; set; } = [];
+    public List<string> AlphabeticallySortedFolders { get; set; } = [];
 }

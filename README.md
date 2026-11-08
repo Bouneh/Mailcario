@@ -47,7 +47,7 @@ The compose ribbon includes **Templates** to save and reuse a subject and format
 
 Mailcario adds correspondents from messages it loads and from successful sends to the local address book. It also scans older mail headers in the background, folder by folder, to fill in existing correspondents without downloading message bodies or attachments. While composing, type a name or email address in **To**, **Cc**, or **Bcc** to see suggestions; use the arrow keys and Enter, or click a suggestion.
 
-Right-click any mail folder to enable or disable notifications for that folder. A message moved by a Mailcario rule can alert you from its destination folder, and clicking the alert opens that folder. The general notification, sound and preview options remain in **Settings**.
+Right-click a mail folder to manage notifications, favorites, subfolders, and folder contents. A message moved by a Mailcario rule can alert you from its destination folder. Clicking a new-mail notification restores the main window and selects that message. The general notification, sound and preview options remain in **Settings**.
 
 ### Local folders
 
@@ -84,7 +84,7 @@ Mailcario checks for a newer published release when it starts. If one is availab
 
 Use **About** to see the installed version, open the repository, and check for or download an update at any time. Drag the divider beneath the account list to adjust its height.
 
-New mail appears in a Windows notification with a short message preview. Closing the window keeps Mailcario running in the notification area; use its icon to reopen the inbox or quit the application.
+New mail appears in a Windows notification with a short message preview. Clicking it opens the message in the main window. Closing the window minimizes Mailcario to the taskbar while it keeps checking for mail; use the notification-area icon to reopen or quit the application.
 
 ### Provider support
 

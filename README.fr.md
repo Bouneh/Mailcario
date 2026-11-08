@@ -47,7 +47,7 @@ Le ruban de rédaction propose **Modèles** pour enregistrer et réutiliser un o
 
 Mailcario ajoute au carnet d’adresses local les correspondants des messages qu’il charge et des envois réussis. Il parcourt aussi progressivement les en-têtes des anciens mails, dossier par dossier, sans télécharger les corps ni les pièces jointes. Dans les champs **À**, **Cc** et **Cci**, saisissez un nom ou une adresse pour voir les suggestions ; choisissez avec les flèches et Entrée, ou cliquez sur une suggestion.
 
-Un clic droit sur un dossier permet d’activer ou de désactiver ses notifications. Un message déplacé par une règle Mailcario peut ainsi déclencher une alerte depuis son dossier de destination ; un clic sur l’alerte ouvre ce dossier. Les options générales de notification, de son et d’aperçu restent dans **Paramètres**.
+Un clic droit sur un dossier permet de gérer ses notifications, ses favoris, ses sous-dossiers et son contenu. Un message déplacé par une règle Mailcario peut ainsi déclencher une alerte depuis son dossier de destination. Un clic sur la notification ramène à la fenêtre principale et sélectionne ce message. Les options générales de notification, de son et d’aperçu restent dans **Paramètres**.
 
 ### Dossiers locaux
 
@@ -84,7 +84,7 @@ Au démarrage, Mailcario cherche une version plus récente publiée sur GitHub. 
 
 L’onglet **À propos** affiche la version installée et permet d’ouvrir le dépôt, de rechercher ou de télécharger une mise à jour à tout moment. Faites glisser la séparation sous la liste des comptes pour en régler la hauteur.
 
-Un nouveau mail apparaît dans une notification Windows avec un court extrait du message. Fermer la fenêtre laisse Mailcario actif dans la zone de notification ; son icône permet de rouvrir la boîte ou de quitter l’application.
+Un nouveau mail apparaît dans une notification Windows avec un court extrait du message. Un clic dessus ouvre le message dans la fenêtre principale. Fermer la fenêtre réduit Mailcario dans la barre des tâches, tout en continuant à relever les mails ; l’icône de la zone de notification permet de rouvrir ou de quitter l’application.
 
 ### Fournisseurs
 
