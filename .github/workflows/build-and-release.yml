@@ -32,6 +32,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Incoming mail list update check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --mail-pagination-check
           if ($LASTEXITCODE -ne 0) { throw 'Mail pagination check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --folder-loading-check
+          if ($LASTEXITCODE -ne 0) { throw 'Batch folder loading and cache check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --folder-notification-check
           if ($LASTEXITCODE -ne 0) { throw 'Folder notification check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --folder-sync-check

@@ -194,6 +194,7 @@ public partial class MainWindow
                 foreach (var key in _folderUnreadCounts.Keys.Where(key =>
                              key.Email.Equals(email, StringComparison.OrdinalIgnoreCase)).ToList())
                     _folderUnreadCounts.Remove(key);
+                ForgetFolderPages(key => key.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
                 _unreadInboxCounts.Remove(email);
             }
             _settings.Save();

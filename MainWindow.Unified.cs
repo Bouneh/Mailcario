@@ -348,13 +348,7 @@ public partial class MainWindow
         try
         {
             await using var session = await ImapSession.ConnectAsync(account, password);
-            await session.SetReadAsync(folder, item.Uid, read);
-            foreach (MailItem message in _messages.Concat(_searchResults ?? []))
-                if (message.Uid == item.Uid && message.AccountEmail.Equals(account.Email,
-                    StringComparison.OrdinalIgnoreCase) && FolderFor(message) == folder) message.IsRead = read;
-            item.IsRead = read;
-            if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
-                SetInboxUnreadCount(account.Email, await session.GetUnreadCountAsync("INBOX"));
+            await ApplyRemoteReadAsync(session, account, folder, item, read);
             FilterMessages();
         }
         catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }

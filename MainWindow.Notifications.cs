@@ -15,6 +15,7 @@ public partial class MainWindow
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Email, string Folder), (uint Validity, uint Uid)> _folderCursors = [];
     private readonly Dictionary<(string Email, string Folder), MailFolderStatus> _folderStatuses = [];
+    private readonly SemaphoreSlim _readStatusGate = new(1, 1);
     private readonly DispatcherTimer _mailTimer = new();
     private readonly CancellationTokenSource _monitorCancellation = new();
     private bool _monitorRunning;
@@ -141,7 +142,8 @@ public partial class MainWindow
         BeginSync(Localizer.T("allAccounts"));
         try
         {
-            foreach (MailAccount account in accounts)
+            foreach (MailAccount account in accounts.OrderByDescending(value =>
+                value.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase)))
             {
                 if (_offlineMode) break;
                 SyncStatusText.Text = Localizer.T("syncing") + " " + account.Email;
@@ -176,8 +178,14 @@ public partial class MainWindow
                     }
                     string? changedActiveFolder = (inboxChanged || incomingInbox) && IsActiveInbox(account.Email)
                         ? "INBOX" : null;
+                    if (changedActiveFolder is not null && IsActiveFolder(account.Email, changedActiveFolder))
+                    {
+                        await RefreshAsync(preserveLoaded: true);
+                        changedActiveFolder = null;
+                    }
                     foreach (MailFolder folder in folders.Where(value => value.CanSelect &&
-                        !value.ServerName.Equals("INBOX", StringComparison.OrdinalIgnoreCase)))
+                        !value.ServerName.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(value => IsActiveFolder(account.Email, value.ServerName)))
                     {
                         _monitorCancellation.Token.ThrowIfCancellationRequested();
                         try
@@ -199,7 +207,7 @@ public partial class MainWindow
                                 out MailFolderStatus? previous);
                             bool changed = TrackFolderStatus(account.Email, folder.ServerName, status);
                             if (changed && IsActiveFolder(account.Email, folder.ServerName))
-                                changedActiveFolder = folder.ServerName;
+                                await RefreshAsync(preserveLoaded: true);
                             if (!IsFolderNotificationEnabled(account.Email, folder.ServerName) ||
                                 (hadStatus && previous!.UidValidity == status.UidValidity &&
                                  previous.UidNext == status.UidNext)) continue;
@@ -225,9 +233,9 @@ public partial class MainWindow
                         key.Email.Equals(account.Email, StringComparison.OrdinalIgnoreCase) &&
                         !available.Contains(FolderKey(key.Email, key.Folder))).ToArray())
                         _folderCursors.Remove(key);
-                    if (changedActiveFolder is not null && IsActiveFolder(account.Email, changedActiveFolder))
-                        await RefreshAsync(preserveLoaded: true);
-                    else if (account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase) &&
+                    ForgetFolderPages(key => key.Email.Equals(account.Email, StringComparison.OrdinalIgnoreCase) &&
+                        !available.Contains(key));
+                    if (account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase) &&
                              _localFolderId is null && !_calendarMode && !_unifiedMode &&
                              !_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase) &&
                              !folders.Any(folder => folder.ServerName.Equals(_folder, StringComparison.OrdinalIgnoreCase)))
@@ -248,6 +256,9 @@ public partial class MainWindow
     {
         var key = FolderKey(email, folder);
         bool changed = _folderStatuses.TryGetValue(key, out MailFolderStatus? previous) && previous != status;
+        if (previous is not null && previous.UidValidity != 0 && status.UidValidity != 0 &&
+            previous.UidValidity != status.UidValidity)
+            ForgetFolderPages(value => value == key);
         _folderStatuses[key] = status;
         SetFolderUnreadCount(email, folder, status.UnreadCount);
         return changed;
@@ -409,6 +420,38 @@ public partial class MainWindow
         _unreadInboxCounts[email] = Math.Max(0, count);
         SetFolderUnreadCount(email, "INBOX", count);
         UpdateUnreadBadge();
+    }
+
+    private void SetSynchronizedFolderUnreadCount(string email, string folder, int count)
+    {
+        if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase)) SetInboxUnreadCount(email, count);
+        else SetFolderUnreadCount(email, folder, count);
+        var key = FolderKey(email, folder);
+        if (_folderStatuses.TryGetValue(key, out MailFolderStatus? status))
+            _folderStatuses[key] = status with { UnreadCount = Math.Max(0, count) };
+    }
+
+    private async Task ApplyRemoteReadAsync(ImapSession session, MailAccount account, string folder,
+        MailItem item, bool read)
+    {
+        await _readStatusGate.WaitAsync();
+        try
+        {
+            await session.SetReadAsync(folder, item.Uid, read);
+            bool changed = item.IsRead != read;
+            foreach (MailItem message in _messages.Concat(_searchResults ?? []))
+                if (message.Uid == item.Uid && message.AccountEmail.Equals(account.Email,
+                    StringComparison.OrdinalIgnoreCase) && FolderFor(message).Equals(folder,
+                    StringComparison.OrdinalIgnoreCase)) message.IsRead = read;
+            item.IsRead = read;
+            var key = FolderKey(account.Email, folder);
+            if (changed && _folderUnreadCounts.TryGetValue(key, out int knownUnread))
+                SetSynchronizedFolderUnreadCount(account.Email, folder,
+                    Math.Max(0, knownUnread + (read ? -1 : 1)));
+            int unread = await session.GetSelectedFolderUnreadCountAsync();
+            SetSynchronizedFolderUnreadCount(account.Email, folder, unread);
+        }
+        finally { _readStatusGate.Release(); }
     }
 
     private void UpdateUnreadBadge()

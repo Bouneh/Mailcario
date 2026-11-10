@@ -761,6 +761,53 @@ internal static class Program
             if (!passed) Environment.ExitCode = 1;
             return;
         }
+        if (args.Length > 0 && args[0] == "--folder-loading-check")
+        {
+            byte[] firstHeader = Encoding.ASCII.GetBytes(
+                "From: First <first@example.invalid>\r\nSubject: First message\r\nDate: Tue, 10 Nov 2026 13:00:00 +0100\r\n\r\n");
+            byte[] secondHeader = Encoding.ASCII.GetBytes(
+                "From: Second <second@example.invalid>\r\nSubject: Second message\r\nDate: Tue, 10 Nov 2026 13:01:00 +0100\r\n\r\n");
+            var responseParts = new (string Line, byte[]? Literal)[]
+            {
+                ($"* 9 FETCH (UID 109 FLAGS (\\Seen) INTERNALDATE \"10-Nov-2026 13:00:00 +0100\" BODY[HEADER.FIELDS (FROM TO SUBJECT DATE)] {{{firstHeader.Length}}}", firstHeader),
+                (")", null),
+                ($"* 10 FETCH (UID 110 FLAGS () INTERNALDATE \"10-Nov-2026 13:01:00 +0100\" BODY[HEADER.FIELDS (FROM TO SUBJECT DATE)] {{{secondHeader.Length}}}", secondHeader),
+                (")", null),
+                ("A0001 OK FETCH completed", null)
+            };
+            var parse = typeof(ImapSession).GetMethod("ParseSummaryResponse",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            var parsed = (IReadOnlyList<MailItem>)parse.Invoke(null, [responseParts, false])!;
+            bool passed = parsed.Count == 2 && parsed[0].Sequence == 10 && parsed[0].Uid == 110 &&
+                parsed[0].Subject == "Second message" && !parsed[0].IsRead &&
+                parsed[1].Sequence == 9 && parsed[1].Uid == 109 && parsed[1].IsRead;
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var window = new MainWindow();
+            var account = new MailAccount { Email = "speed@example.invalid" };
+            var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+            typeof(MainWindow).GetField("_account", flags)!.SetValue(window, account);
+            typeof(MainWindow).GetField("_messages", flags)!.SetValue(window, parsed);
+            typeof(MainWindow).GetField("_folderTotalCount", flags)!.SetValue(window, 25);
+            typeof(MainWindow).GetField("_nextOlderSequence", flags)!.SetValue(window, 15);
+            typeof(MainWindow).GetMethod("RememberFolderPage", flags)!.Invoke(window,
+                [account.Email, "Projects"]);
+            typeof(MainWindow).GetField("_folder", flags)!.SetValue(window, "Projects");
+            passed &= (bool)typeof(MainWindow).GetMethod("ShowFolderPageImmediately", flags)!
+                .Invoke(window, [account.Email, "Projects"])!;
+            var messageList = (ListBox)window.FindName("MessageList");
+            passed &= messageList.Items.Count == 2 &&
+                (int)typeof(MainWindow).GetField("_folderTotalCount", flags)!.GetValue(window)! == 25;
+            passed &= !(bool)typeof(MainWindow).GetMethod("ShowFolderPageImmediately", flags)!
+                .Invoke(window, [account.Email, "Other"])! && messageList.Items.Count == 0;
+            window.Close();
+            ThemeManager.Shutdown();
+            Console.WriteLine(passed ? "Batch folder loading and instant cache check passed" :
+                "Batch folder loading or instant cache check failed");
+            if (!passed) Environment.ExitCode = 1;
+            return;
+        }
         if (args.Length > 0 && args[0] == "--folder-notification-check")
         {
             var checkApp = new App();
@@ -864,6 +911,13 @@ internal static class Program
             apply.Invoke(window, [account.Email, new MailFolder[] { folders[0], folders[1], folders[2],
                 new() { ServerName = "Projects/2026/Archive" } }]);
             passed &= syncFoldersList.Items.Count == 4 && ((MailFolder)syncFoldersList.Items[2]).UnreadCount == 4;
+            typeof(MainWindow).GetMethod("SetSynchronizedFolderUnreadCount",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
+                [account.Email, "Projects/2026", 0]);
+            passed &= ((MailFolder)syncFoldersList.Items[2]).UnreadCount == 0 &&
+                ((MailFolder)syncFoldersList.Items[2]).UnreadVisibility == Visibility.Collapsed;
+            passed &= !(bool)track.Invoke(window, [account.Email, "Projects/2026",
+                new MailFolderStatus(20, 16, 8, 0)])!;
             window.Close();
             ThemeManager.Shutdown();
             Console.WriteLine(passed ? "Folder synchronization check passed" : "Folder synchronization check failed");

@@ -69,6 +69,50 @@ public partial class MainWindow : Window
     private readonly string? _initialAccountEmail;
     private readonly string? _initialFolderName;
     private readonly Dictionary<(string Email, string Folder), int> _globalSearchCursors = [];
+    private sealed record FolderPageCache(IReadOnlyList<MailItem> Messages, int TotalCount, int NextSequence,
+        IReadOnlyList<MailItem> SentCandidates, string? SentFolderName, int NextSentSequence);
+    private readonly Dictionary<(string Email, string Folder), FolderPageCache> _folderPageCache = [];
+    private readonly Queue<(string Email, string Folder)> _folderCacheOrder = new();
+
+    private void RememberFolderPage(string email, string folder)
+    {
+        var key = FolderKey(email, folder);
+        var older = _folderCacheOrder.Where(value => value != key).ToArray();
+        _folderCacheOrder.Clear();
+        foreach (var value in older) _folderCacheOrder.Enqueue(value);
+        _folderCacheOrder.Enqueue(key);
+        _folderPageCache[key] = new FolderPageCache(_messages.ToList(), _folderTotalCount,
+            _nextOlderSequence, _sentCandidates.ToList(), _sentFolderName, _nextOlderSentSequence);
+        while (_folderCacheOrder.Count > 12) _folderPageCache.Remove(_folderCacheOrder.Dequeue());
+    }
+
+    private void ForgetFolderPages(Func<(string Email, string Folder), bool> shouldRemove)
+    {
+        foreach (var key in _folderPageCache.Keys.Where(shouldRemove).ToArray())
+            _folderPageCache.Remove(key);
+        var retained = _folderCacheOrder.Where(_folderPageCache.ContainsKey).ToArray();
+        _folderCacheOrder.Clear();
+        foreach (var key in retained) _folderCacheOrder.Enqueue(key);
+    }
+
+    private bool ShowFolderPageImmediately(string email, string folder)
+    {
+        _mailLoadCts?.Cancel();
+        _olderLoadCts?.Cancel();
+        bool cached = _folderPageCache.TryGetValue(FolderKey(email, folder), out FolderPageCache? page);
+        _messages = page?.Messages ?? [];
+        _folderTotalCount = page?.TotalCount ?? 0;
+        _nextOlderSequence = page?.NextSequence ?? 0;
+        _sentCandidates = page?.SentCandidates ?? [];
+        _sentFolderName = page?.SentFolderName;
+        _nextOlderSentSequence = page?.NextSentSequence ?? 0;
+        _loadedFolderAccount = cached ? email : null;
+        _loadedFolderName = cached ? folder : null;
+        _searchResults = null;
+        FilterMessages();
+        FolderTitle.Text = CurrentFolderLabel();
+        return cached;
+    }
 
     public MainWindow() : this(null) { }
 
@@ -318,8 +362,7 @@ public partial class MainWindow : Window
             string? sentName = null;
             if (_settings.ConversationView && !sentFolder && (messages.Count > 0 || page.NextSequence > 0))
             {
-                MailFolder? sent = (await session.ListFoldersAsync(cts.Token))
-                    .FirstOrDefault(value => value.CanSelect && value.IsSent);
+                MailFolder? sent = _allFolders.FirstOrDefault(value => value.CanSelect && value.IsSent);
                 if (sent is not null)
                 {
                     sentPage = await session.LoadPageAsync(sent.ServerName, token: cts.Token, sentFolder: true);
@@ -353,6 +396,7 @@ public partial class MainWindow : Window
                 ? Math.Min(_nextOlderSequence, page.NextSequence) : page.NextSequence;
             _loadedFolderAccount = account.Email;
             _loadedFolderName = folder;
+            RememberFolderPage(account.Email, folder);
             SetAccountConnected(account.Email, true);
             if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
                 SetInboxUnreadCount(account.Email, await session.GetUnreadCountAsync("INBOX", cts.Token));
@@ -468,6 +512,7 @@ public partial class MainWindow : Window
                 }
             }
             SetAccountConnected(account.Email, true);
+            if (!searchPage) RememberFolderPage(account.Email, folder);
             FilterMessages();
             StatusLabel.Text = $"{(searchPage ? _searchResults!.Count : _messages.Count)} · {Localizer.T("ready")}";
         }
@@ -719,22 +764,17 @@ public partial class MainWindow : Window
             else
             {
                 await using var session = await ImapSession.ConnectAsync(account!, password!);
-                content = await session.LoadMessageAsync(folder, item.Uid);
-                if (_selected != item) return;
                 if (!item.IsRead)
                 {
                     try
                     {
-                        await session.SetReadAsync(folder, item.Uid, true);
-                        if (folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
-                            SetInboxUnreadCount(account!.Email, await session.GetUnreadCountAsync("INBOX"));
-                        foreach (var message in _messages.Concat(_searchResults ?? []))
-                            if (message.Uid == item.Uid && message.AccountEmail.Equals(account!.Email,
-                                    StringComparison.OrdinalIgnoreCase) && message.FolderName == folder) message.IsRead = true;
-                        item.IsRead = true;
+                        await ApplyRemoteReadAsync(session, account!, folder, item, true);
                     }
                     catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
                 }
+                if (_selected != item) return;
+                content = await session.LoadMessageAsync(folder, item.Uid);
+                if (_selected != item) return;
             }
             if (_selected != item) return;
             _selectedContent = content;
@@ -1134,6 +1174,7 @@ public partial class MainWindow : Window
             _calendarLoaded = false;
             ApplyFolderList();
         }
+        if (_account is not null) ShowFolderPageImmediately(_account.Email, "INBOX");
         ShowInbox();
         await RefreshAsync();
     }
@@ -1179,6 +1220,7 @@ public partial class MainWindow : Window
         SearchBox.Clear();
         _calendarLoaded = false;
         ApplyFolderList();
+        if (_account is not null) ShowFolderPageImmediately(_account.Email, folder.ServerName);
         ShowInbox();
         await RefreshAsync();
     }

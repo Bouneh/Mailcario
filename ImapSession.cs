@@ -125,13 +125,8 @@ public sealed class ImapSession : IAsyncDisposable
     {
         int total = await SelectAsync(folder, token);
         var (first, last, next) = PageBounds(total, beforeSequence, count);
-        var items = new List<MailItem>();
-        for (int sequence = last; sequence >= first; sequence--)
-        {
-            token.ThrowIfCancellationRequested();
-            var item = await FetchSummaryAsync($"FETCH {sequence}", token, sentFolder);
-            if (item is not null) items.Add(item);
-        }
+        IReadOnlyList<MailItem> items = last >= first
+            ? await FetchSummariesAsync($"FETCH {first}:{last}", token, sentFolder) : [];
         return new MailPage(items, total, next);
     }
 
@@ -156,14 +151,9 @@ public sealed class ImapSession : IAsyncDisposable
             foreach (string candidate in part.Line[8..].Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 if (uint.TryParse(candidate, out uint uid) && uid > lastUid) uids.Add(uid);
         }
-        var items = new List<MailItem>();
-        foreach (uint uid in uids.Distinct().Order().Take(count))
-        {
-            token.ThrowIfCancellationRequested();
-            var item = await FetchSummaryAsync($"UID FETCH {uid}", token);
-            if (item is not null) items.Add(item);
-        }
-        return items;
+        uint[] selected = uids.Distinct().Order().Take(count).ToArray();
+        return selected.Length == 0 ? [] : await FetchSummariesAsync(
+            "UID FETCH " + string.Join(',', selected), token);
     }
 
     public Task<InboxSnapshot> GetInboxSnapshotAsync(CancellationToken token = default) =>
@@ -222,6 +212,9 @@ public sealed class ImapSession : IAsyncDisposable
         await SelectAsync(folder, token);
         return await CountUnreadInSelectedFolderAsync(token);
     }
+
+    public Task<int> GetSelectedFolderUnreadCountAsync(CancellationToken token = default) =>
+        CountUnreadInSelectedFolderAsync(token);
 
     private async Task<int> CountUnreadInSelectedFolderAsync(CancellationToken token)
     {
@@ -352,13 +345,9 @@ public sealed class ImapSession : IAsyncDisposable
         }
         uids.Sort();
         var (first, last, next) = PageBounds(uids.Count, beforeIndex, count);
-        var items = new List<MailItem>();
-        for (int index = last; index >= first; index--)
-        {
-            token.ThrowIfCancellationRequested();
-            var item = await FetchSummaryAsync($"UID FETCH {uids[index - 1]}", token, sentFolder);
-            if (item is not null) items.Add(item);
-        }
+        IReadOnlyList<MailItem> items = last >= first
+            ? await FetchSummariesAsync("UID FETCH " + string.Join(',', uids.Skip(first - 1).Take(last - first + 1)),
+                token, sentFolder) : [];
         return new MailSearchPage(items, uids.Count, next);
     }
 
@@ -379,11 +368,49 @@ public sealed class ImapSession : IAsyncDisposable
 
     private async Task<MailItem?> FetchSummaryAsync(string prefix, CancellationToken token, bool sentFolder = false)
     {
+        return (await FetchSummariesAsync(prefix, token, sentFolder)).FirstOrDefault();
+    }
+
+    private async Task<IReadOnlyList<MailItem>> FetchSummariesAsync(string prefix, CancellationToken token,
+        bool sentFolder = false)
+    {
         var response = await CommandAsync($"{prefix} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])", token, 128_000);
-        byte[]? literal = response.Parts.FirstOrDefault(p => p.Literal is not null)?.Literal;
+        return ParseSummaryResponse(response.Parts.Select(part => (part.Line, part.Literal)), sentFolder);
+    }
+
+    internal static IReadOnlyList<MailItem> ParseSummaryResponse(
+        IEnumerable<(string Line, byte[]? Literal)> parts, bool sentFolder = false)
+    {
+        var items = new List<MailItem>();
+        var group = new List<(string Line, byte[]? Literal)>();
+        foreach (var part in parts)
+        {
+            if (Regex.IsMatch(part.Line, @"^\* \d+ FETCH\b", RegexOptions.IgnoreCase))
+            {
+                MailItem? previous = ParseSummaryParts(group, sentFolder);
+                if (previous is not null) items.Add(previous);
+                group.Clear();
+            }
+            if (group.Count > 0 || Regex.IsMatch(part.Line, @"^\* \d+ FETCH\b", RegexOptions.IgnoreCase))
+                group.Add(part);
+        }
+        MailItem? final = ParseSummaryParts(group, sentFolder);
+        if (final is not null) items.Add(final);
+        return items.OrderByDescending(item => item.Sequence).ToList();
+    }
+
+    private static MailItem? ParseSummaryParts(IReadOnlyList<(string Line, byte[]? Literal)> parts,
+        bool sentFolder)
+    {
+        byte[]? literal = parts.FirstOrDefault(part => part.Literal is not null).Literal;
         if (literal is null) return null;
+        string meta = string.Join(" ", parts.Select(part => part.Line));
+        return ParseSummary(meta, literal, sentFolder);
+    }
+
+    internal static MailItem? ParseSummary(string meta, byte[] literal, bool sentFolder = false)
+    {
         var headers = MimeReader.ReadHeaders(literal);
-        string meta = string.Join(" ", response.Parts.Select(p => p.Line));
         var uidMatch = Regex.Match(meta, @"\bUID (\d+)", RegexOptions.IgnoreCase);
         if (!uidMatch.Success || !uint.TryParse(uidMatch.Groups[1].Value, out uint uid)) return null;
         var seqMatch = Regex.Match(meta, @"\* (\d+) FETCH", RegexOptions.IgnoreCase);
