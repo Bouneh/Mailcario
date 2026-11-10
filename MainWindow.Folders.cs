@@ -10,6 +10,34 @@ public partial class MainWindow
 {
     private IReadOnlyList<MailFolder> _allFolders = [];
     private FolderViewState _folderView = new();
+    private readonly Dictionary<(string Email, string Folder), int> _folderUnreadCounts = [];
+
+    private static (string Email, string Folder) FolderKey(string email, string folder) =>
+        (email.ToLowerInvariant(), folder.ToLowerInvariant());
+
+    private void SetFolderUnreadCount(string email, string folder, int count)
+    {
+        int unread = Math.Max(0, count);
+        _folderUnreadCounts[FolderKey(email, folder)] = unread;
+        if (!email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase)) return;
+        foreach (MailFolder visible in FolderList.Items.OfType<MailFolder>())
+            if (visible.ServerName.Equals(folder, StringComparison.OrdinalIgnoreCase))
+                visible.UnreadCount = unread;
+    }
+
+    private void ApplyServerFolderList(string email, IReadOnlyList<MailFolder> folders)
+    {
+        if (!email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase)) return;
+        bool changed = _allFolders.Count != folders.Count || _allFolders.Zip(folders).Any(pair =>
+            !pair.First.ServerName.Equals(pair.Second.ServerName, StringComparison.OrdinalIgnoreCase) ||
+            pair.First.Delimiter != pair.Second.Delimiter || pair.First.CanSelect != pair.Second.CanSelect ||
+            pair.First.IsSent != pair.Second.IsSent);
+        if (!changed) return;
+        _allFolders = folders;
+        _folderDelimiter = folders.FirstOrDefault(value => value.ServerName.Equals(_folder,
+            StringComparison.OrdinalIgnoreCase))?.Delimiter;
+        ApplyFolderList();
+    }
 
     private void RestoreFolderView()
     {
@@ -56,7 +84,9 @@ public partial class MainWindow
                     IsSent = folder.IsSent,
                     HasChildren = _allFolders.Any(child => IsDescendant(child, folder.ServerName, folder.Delimiter)),
                     IsExpanded = !collapsed.Contains(folder.ServerName),
-                    NotificationsEnabled = notified.Contains(folder.ServerName)
+                    NotificationsEnabled = notified.Contains(folder.ServerName),
+                    UnreadCount = _account is null ? 0 :
+                        _folderUnreadCounts.GetValueOrDefault(FolderKey(_account.Email, folder.ServerName))
                 }).ToList();
             FolderList.ItemsSource = visible;
             FolderList.SelectedItem = _localFolderId is null ? visible.FirstOrDefault(x =>

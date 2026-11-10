@@ -84,7 +84,7 @@ Mailcario checks for a newer published release when it starts. If one is availab
 
 Use **About** to see the installed version, open the repository, and check for or download an update at any time. Drag the divider beneath the account list to adjust its height.
 
-New mail appears in a Windows notification with a short message preview. Clicking it opens the message in the main window. Closing the window minimizes Mailcario to the taskbar while it keeps checking for mail; use the notification-area icon to reopen or quit the application.
+New mail appears in a Windows notification with a short message preview. Clicking it opens the message in the main window. The original Mailcario Glass sound can be previewed or turned off in **Settings → New messages**. Closing the window minimizes Mailcario to the taskbar while it keeps checking for mail; use the notification-area icon to reopen or quit the application.
 
 ### Provider support
 

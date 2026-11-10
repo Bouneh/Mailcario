@@ -82,7 +82,7 @@ public sealed class ImapSession : IAsyncDisposable
     public async Task<IReadOnlyList<MailFolder>> ListFoldersAsync(CancellationToken token = default)
     {
         var response = await CommandAsync("LIST \"\" \"*\"", token);
-        var folders = new List<MailFolder> { new() { ServerName = "INBOX" } };
+        var folders = new List<MailFolder>();
         foreach (var part in response.Parts)
         {
             string line = part.Line;
@@ -99,6 +99,10 @@ public sealed class ImapSession : IAsyncDisposable
                     IsSent = Regex.IsMatch(match.Groups["flags"].Value, @"\\Sent\b", RegexOptions.IgnoreCase),
                     CanSelect = !line.Contains("\\Noselect", StringComparison.OrdinalIgnoreCase) });
         }
+        MailFolder? inbox = folders.FirstOrDefault(folder =>
+            folder.ServerName.Equals("INBOX", StringComparison.OrdinalIgnoreCase));
+        if (inbox is null) folders.Insert(0, new MailFolder { ServerName = "INBOX" });
+        else { folders.Remove(inbox); folders.Insert(0, inbox); }
         if (!folders.Any(folder => folder.IsSent))
         {
             string[] preferred = ["Sent Items", "Sent Messages", "Sent Mail", "Éléments envoyés",
@@ -165,22 +169,52 @@ public sealed class ImapSession : IAsyncDisposable
     public Task<InboxSnapshot> GetInboxSnapshotAsync(CancellationToken token = default) =>
         GetFolderSnapshotAsync("INBOX", true, token);
 
+    public async Task<MailFolderStatus> GetFolderStatusAsync(string folder, CancellationToken token = default)
+    {
+        var response = await CommandAsync($"STATUS {Quote(folder)} (MESSAGES UNSEEN UIDNEXT UIDVALIDITY)", token);
+        foreach (var part in response.Parts)
+            if (TryParseFolderStatus(part.Line, out MailFolderStatus? status)) return status!;
+        throw new IOException("The IMAP server did not return the requested folder status.");
+    }
+
+    internal static bool TryParseFolderStatus(string line, out MailFolderStatus? status)
+    {
+        status = null;
+        if (!line.StartsWith("* STATUS ", StringComparison.OrdinalIgnoreCase)) return false;
+        Match items = Regex.Match(line, @"\((?<items>(?:\w+\s+\d+\s*)+)\)\s*$");
+        if (!items.Success) return false;
+        var values = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match pair in Regex.Matches(items.Groups["items"].Value, @"(?<key>\w+)\s+(?<value>\d+)"))
+            if (uint.TryParse(pair.Groups["value"].Value, out uint value))
+                values[pair.Groups["key"].Value] = value;
+        if (!values.TryGetValue("MESSAGES", out uint total) ||
+            !values.TryGetValue("UNSEEN", out uint unread) ||
+            !values.TryGetValue("UIDNEXT", out uint next) ||
+            !values.TryGetValue("UIDVALIDITY", out uint validity)) return false;
+        status = new MailFolderStatus(validity, next, (int)Math.Min(total, int.MaxValue),
+            (int)Math.Min(unread, int.MaxValue));
+        return true;
+    }
+
     public async Task<InboxSnapshot> GetFolderSnapshotAsync(string folder, bool countUnread = false,
         CancellationToken token = default)
     {
         var response = await CommandAsync($"SELECT {Quote(folder)}", token);
         uint validity = 0;
+        uint uidNext = 0;
         int total = 0;
         foreach (var part in response.Parts)
         {
             var validityMatch = Regex.Match(part.Line, @"\[UIDVALIDITY (\d+)\]", RegexOptions.IgnoreCase);
             if (validityMatch.Success) uint.TryParse(validityMatch.Groups[1].Value, out validity);
+            var nextMatch = Regex.Match(part.Line, @"\[UIDNEXT (\d+)\]", RegexOptions.IgnoreCase);
+            if (nextMatch.Success) uint.TryParse(nextMatch.Groups[1].Value, out uidNext);
             var existsMatch = Regex.Match(part.Line, @"^\* (\d+) EXISTS$", RegexOptions.IgnoreCase);
             if (existsMatch.Success) int.TryParse(existsMatch.Groups[1].Value, out total);
         }
         MailItem? latest = total > 0 ? await FetchSummaryAsync($"FETCH {total}", token) : null;
         int unreadCount = countUnread ? await CountUnreadInSelectedFolderAsync(token) : 0;
-        return new InboxSnapshot(validity, latest, unreadCount);
+        return new InboxSnapshot(validity, latest, unreadCount, total, uidNext);
     }
 
     public async Task<int> GetUnreadCountAsync(string folder, CancellationToken token = default)

@@ -84,7 +84,7 @@ Au démarrage, Mailcario cherche une version plus récente publiée sur GitHub. 
 
 L’onglet **À propos** affiche la version installée et permet d’ouvrir le dépôt, de rechercher ou de télécharger une mise à jour à tout moment. Faites glisser la séparation sous la liste des comptes pour en régler la hauteur.
 
-Un nouveau mail apparaît dans une notification Windows avec un court extrait du message. Un clic dessus ouvre le message dans la fenêtre principale. Fermer la fenêtre réduit Mailcario dans la barre des tâches, tout en continuant à relever les mails ; l’icône de la zone de notification permet de rouvrir ou de quitter l’application.
+Un nouveau mail apparaît dans une notification Windows avec un court extrait du message. Un clic dessus ouvre le message dans la fenêtre principale. Le son original Mailcario Cristal peut être écouté ou désactivé dans **Paramètres → Nouveaux messages**. Fermer la fenêtre réduit Mailcario dans la barre des tâches, tout en continuant à relever les mails ; l’icône de la zone de notification permet de rouvrir ou de quitter l’application.
 
 ### Fournisseurs
 

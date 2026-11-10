@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Reflection;
+using System.Media;
 using Microsoft.Web.WebView2.Wpf;
 using Microsoft.Web.WebView2.Core;
 using Mailcario;
@@ -17,6 +18,38 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--notification-sound-check")
+        {
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            try
+            {
+                string path = Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds",
+                    "mailcario-cristal.wav");
+                using var player = new SoundPlayer(path);
+                player.Load();
+                var settings = new SettingsWindow(new ClientSettings { PlaySound = true }, [])
+                {
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                    Left = -4000, Top = -4000, ShowInTaskbar = false, ShowActivated = false
+                };
+                bool controlsWorked = false;
+                settings.Loaded += (_, _) =>
+                {
+                    var enabled = (CheckBox)settings.FindName("SoundCheck");
+                    controlsWorked = enabled.IsChecked == true &&
+                        settings.FindName("PreviewSoundButton") is Button;
+                    enabled.IsChecked = false;
+                    ((Button)settings.FindName("SaveButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                };
+                if (settings.ShowDialog() != true || !controlsWorked || settings.Settings.PlaySound)
+                    throw new InvalidOperationException("The notification sound could not be disabled.");
+                Console.WriteLine("Cristal WAV asset and notification sound toggle passed.");
+            }
+            finally { ThemeManager.Shutdown(); }
+            return;
+        }
         if (args.Length > 0 && args[0] is "--navigation-menu-check" or "--folder-menu-preview")
         {
             var checkApp = new App();
@@ -784,6 +817,56 @@ internal static class Program
             window.Close();
             ThemeManager.Shutdown();
             Console.WriteLine(passed ? "Folder notification check passed" : "Folder notification check failed");
+            if (!passed) Environment.ExitCode = 1;
+            return;
+        }
+        if (args.Length > 0 && args[0] == "--folder-sync-check")
+        {
+            var parse = typeof(ImapSession).GetMethod("TryParseFolderStatus",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            object?[] response = ["* STATUS \"Projects/2026\" (UIDNEXT 15 MESSAGES 7 UIDVALIDITY 20 UNSEEN 3)", null];
+            bool passed = (bool)parse.Invoke(null, response)! &&
+                response[1] is MailFolderStatus { UidValidity: 20, UidNext: 15,
+                    TotalCount: 7, UnreadCount: 3 };
+            object?[] malformed = ["* STATUS \"Projects\" (MESSAGES 7 UNSEEN 3)", null];
+            passed &= !(bool)parse.Invoke(null, malformed)!;
+
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            var window = new MainWindow();
+            var account = new MailAccount { Email = "folders@example.invalid" };
+            typeof(MainWindow).GetField("_account", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, account);
+            var apply = typeof(MainWindow).GetMethod("ApplyServerFolderList",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var track = typeof(MainWindow).GetMethod("TrackFolderStatus",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            MailFolder[] folders = [new() { ServerName = "INBOX" },
+                new() { ServerName = "Projects" }, new() { ServerName = "Projects/2026" }];
+            apply.Invoke(window, [account.Email, folders]);
+            var syncFoldersList = (ListBox)window.FindName("FolderList");
+            passed &= syncFoldersList.Items.Count == 3 && ((MailFolder)syncFoldersList.Items[1]).HasChildren &&
+                ((MailFolder)syncFoldersList.Items[2]).Depth == 1;
+            object? source = syncFoldersList.ItemsSource;
+            apply.Invoke(window, [account.Email, folders]);
+            passed &= ReferenceEquals(source, syncFoldersList.ItemsSource);
+            var initial = new MailFolderStatus(20, 15, 7, 3);
+            passed &= !(bool)track.Invoke(window, [account.Email, "Projects/2026", initial])!;
+            var nested = (MailFolder)syncFoldersList.Items[2];
+            passed &= nested.UnreadCount == 3 && nested.UnreadVisibility == Visibility.Visible;
+            passed &= (bool)track.Invoke(window, [account.Email, "Projects/2026",
+                new MailFolderStatus(20, 16, 8, 4)])! && nested.UnreadCount == 4;
+            passed &= !(bool)track.Invoke(window, [account.Email, "Projects/2026",
+                new MailFolderStatus(20, 16, 8, 4)])!;
+            passed &= !(bool)track.Invoke(window, ["other@example.invalid", "Projects/2026", initial])! &&
+                nested.UnreadCount == 4;
+            apply.Invoke(window, [account.Email, new MailFolder[] { folders[0], folders[1], folders[2],
+                new() { ServerName = "Projects/2026/Archive" } }]);
+            passed &= syncFoldersList.Items.Count == 4 && ((MailFolder)syncFoldersList.Items[2]).UnreadCount == 4;
+            window.Close();
+            ThemeManager.Shutdown();
+            Console.WriteLine(passed ? "Folder synchronization check passed" : "Folder synchronization check failed");
             if (!passed) Environment.ExitCode = 1;
             return;
         }

@@ -34,6 +34,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Mail pagination check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --folder-notification-check
           if ($LASTEXITCODE -ne 0) { throw 'Folder notification check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --folder-sync-check
+          if ($LASTEXITCODE -ne 0) { throw 'Folder synchronization check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --attachment-check
           if ($LASTEXITCODE -ne 0) { throw 'Attachment decoding and preview check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --local-folder-check
@@ -58,6 +60,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Folder menu and notification selection check failed.' }
           dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --context-menu-check
           if ($LASTEXITCODE -ne 0) { throw 'Message context menu check failed.' }
+          dotnet run --project Preview/MailcarioPreview.csproj -c Release --no-build -- --notification-sound-check
+          if ($LASTEXITCODE -ne 0) { throw 'Notification sound assets and settings check failed.' }
 
   release:
     name: Publish Windows installer

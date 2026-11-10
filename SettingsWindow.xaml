@@ -26,7 +26,10 @@
           <StackPanel>
             <TextBlock x:Name="NotificationsHeading" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" Margin="0,0,0,13"/>
             <CheckBox x:Name="NotifyCheck" Margin="0,0,0,10"/>
-            <CheckBox x:Name="SoundCheck" Margin="0,0,0,10"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+              <CheckBox x:Name="SoundCheck" VerticalAlignment="Center" Margin="0,0,15,0"/>
+              <Button x:Name="PreviewSoundButton" Click="PreviewSound_Click"/>
+            </StackPanel>
             <CheckBox x:Name="PreviewCheck" Margin="0,0,0,13"/>
             <TextBlock x:Name="FolderNotificationsHint" Foreground="{DynamicResource Muted}"
                        TextWrapping="Wrap" Margin="0,0,0,13" FontSize="11"/>

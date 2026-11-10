@@ -7,7 +7,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\Mailcario.ico</ApplicationIcon>
-    <Version>0.2.11</Version>
+    <Version>0.2.12</Version>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Updater\**\*.cs" />
@@ -15,6 +15,7 @@
     <Compile Remove="Installer\**\*.cs" />
     <Resource Include="Assets\Mailcario.ico" />
     <Resource Include="Assets\Mailcario-512.png" />
+    <Content Include="Assets\Sounds\mailcario-cristal.wav" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="oauth-providers.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="oauth-providers.local.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('oauth-providers.local.json') and '$(IncludeLocalOAuthConfig)' != 'false'" />
     <Content Include="update-source.json" CopyToOutputDirectory="PreserveNewest" />

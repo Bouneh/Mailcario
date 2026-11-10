@@ -1,4 +1,3 @@
-using System.Media;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -15,6 +14,7 @@ public partial class MainWindow
     private readonly Dictionary<string, (uint Validity, uint Uid)> _inboxCursors =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Email, string Folder), (uint Validity, uint Uid)> _folderCursors = [];
+    private readonly Dictionary<(string Email, string Folder), MailFolderStatus> _folderStatuses = [];
     private readonly DispatcherTimer _mailTimer = new();
     private readonly CancellationTokenSource _monitorCancellation = new();
     private bool _monitorRunning;
@@ -159,34 +159,79 @@ public partial class MainWindow
                     catch (Exception ex) { StatusLabel.Text = Localizer.T("rules") + ": " + ex.Message; }
                     InboxSnapshot snapshot = await session.GetInboxSnapshotAsync(_monitorCancellation.Token);
                     if (snapshot.Latest is not null) StampMessages([snapshot.Latest], account.Email, "INBOX", showContext: _unifiedMode);
+                    IReadOnlyList<MailFolder> folders = await session.ListFoldersAsync(_monitorCancellation.Token);
+                    ApplyServerFolderList(account.Email, folders);
                     SetAccountConnected(account.Email, true);
                     SetInboxUnreadCount(account.Email, snapshot.UnreadCount);
-                    if (ObserveInbox(account.Email, snapshot.UidValidity, snapshot.Latest) && snapshot.Latest is not null)
+                    uint inboxNext = snapshot.UidNext != 0 ? snapshot.UidNext :
+                        snapshot.Latest is { Uid: < uint.MaxValue } last ? last.Uid + 1 : 1;
+                    bool inboxChanged = TrackFolderStatus(account.Email, "INBOX", new MailFolderStatus(
+                        snapshot.UidValidity, inboxNext, snapshot.TotalCount, snapshot.UnreadCount));
+                    bool incomingInbox = ObserveInbox(account.Email, snapshot.UidValidity, snapshot.Latest);
+                    if (incomingInbox && snapshot.Latest is not null)
                     {
-                        bool activeInbox = IsActiveInbox(account.Email);
-                        if (activeInbox) InsertIncomingInboxMessage(snapshot.Latest);
+                        if (IsActiveInbox(account.Email)) InsertIncomingInboxMessage(snapshot.Latest);
                         if (IsFolderNotificationEnabled(account.Email, "INBOX"))
                             await NotifyNewMailAsync(session, account.Email, "INBOX", snapshot.Latest, _monitorCancellation.Token);
-                        if (activeInbox && IsActiveInbox(account.Email)) await RefreshAsync(preserveLoaded: true);
                     }
-                    foreach (string folder in NotificationFoldersFor(account.Email).Where(name =>
-                        !name.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
-                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
+                    string? changedActiveFolder = (inboxChanged || incomingInbox) && IsActiveInbox(account.Email)
+                        ? "INBOX" : null;
+                    foreach (MailFolder folder in folders.Where(value => value.CanSelect &&
+                        !value.ServerName.Equals("INBOX", StringComparison.OrdinalIgnoreCase)))
                     {
                         _monitorCancellation.Token.ThrowIfCancellationRequested();
                         try
                         {
-                            InboxSnapshot folderSnapshot = await session.GetFolderSnapshotAsync(folder,
+                            MailFolderStatus status;
+                            try { status = await session.GetFolderStatusAsync(folder.ServerName, _monitorCancellation.Token); }
+                            catch (OperationCanceledException) { throw; }
+                            catch (Exception)
+                            {
+                                // A server without working STATUS can still synchronize via SELECT/SEARCH.
+                                InboxSnapshot fallback = await session.GetFolderSnapshotAsync(folder.ServerName,
+                                    true, _monitorCancellation.Token);
+                                uint next = fallback.UidNext != 0 ? fallback.UidNext :
+                                    fallback.Latest is { Uid: < uint.MaxValue } latest ? latest.Uid + 1 : 1;
+                                status = new MailFolderStatus(fallback.UidValidity, next,
+                                    fallback.TotalCount, fallback.UnreadCount);
+                            }
+                            bool hadStatus = _folderStatuses.TryGetValue(FolderKey(account.Email, folder.ServerName),
+                                out MailFolderStatus? previous);
+                            bool changed = TrackFolderStatus(account.Email, folder.ServerName, status);
+                            if (changed && IsActiveFolder(account.Email, folder.ServerName))
+                                changedActiveFolder = folder.ServerName;
+                            if (!IsFolderNotificationEnabled(account.Email, folder.ServerName) ||
+                                (hadStatus && previous!.UidValidity == status.UidValidity &&
+                                 previous.UidNext == status.UidNext)) continue;
+                            InboxSnapshot folderSnapshot = await session.GetFolderSnapshotAsync(folder.ServerName,
                                 token: _monitorCancellation.Token);
-                            if (!ObserveFolder(account.Email, folder, folderSnapshot.UidValidity, folderSnapshot.Latest) ||
-                                folderSnapshot.Latest is null) continue;
-                            await NotifyNewMailAsync(session, account.Email, folder, folderSnapshot.Latest,
-                                _monitorCancellation.Token);
-                            if (IsActiveFolder(account.Email, folder)) await RefreshAsync(preserveLoaded: true);
+                            if (ObserveFolder(account.Email, folder.ServerName, folderSnapshot.UidValidity,
+                                    folderSnapshot.Latest) && folderSnapshot.Latest is not null)
+                                await NotifyNewMailAsync(session, account.Email, folder.ServerName,
+                                    folderSnapshot.Latest, _monitorCancellation.Token);
                         }
                         catch (OperationCanceledException) { throw; }
-                        catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + folder + ": " + ex.Message; }
+                        catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + folder.ServerName + ": " + ex.Message; }
                     }
+                    var available = folders.Select(folder => FolderKey(account.Email, folder.ServerName))
+                        .ToHashSet();
+                    foreach (var key in _folderStatuses.Keys.Where(key =>
+                        key.Email == account.Email.ToLowerInvariant() && !available.Contains(key)).ToArray())
+                    {
+                        _folderStatuses.Remove(key);
+                        _folderUnreadCounts.Remove(key);
+                    }
+                    foreach (var key in _folderCursors.Keys.Where(key =>
+                        key.Email.Equals(account.Email, StringComparison.OrdinalIgnoreCase) &&
+                        !available.Contains(FolderKey(key.Email, key.Folder))).ToArray())
+                        _folderCursors.Remove(key);
+                    if (changedActiveFolder is not null && IsActiveFolder(account.Email, changedActiveFolder))
+                        await RefreshAsync(preserveLoaded: true);
+                    else if (account.Email.Equals(_account?.Email, StringComparison.OrdinalIgnoreCase) &&
+                             _localFolderId is null && !_calendarMode && !_unifiedMode &&
+                             !_folder.Equals("INBOX", StringComparison.OrdinalIgnoreCase) &&
+                             !folders.Any(folder => folder.ServerName.Equals(_folder, StringComparison.OrdinalIgnoreCase)))
+                        await NavigateToInboxAsync();
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex) { SetAccountConnected(account.Email, false, ex.Message); }
@@ -198,6 +243,15 @@ public partial class MainWindow
 
     private bool ObserveInbox(string email, uint validity, MailItem? latest) =>
         AdvanceCursor(_inboxCursors, email, validity, latest);
+
+    private bool TrackFolderStatus(string email, string folder, MailFolderStatus status)
+    {
+        var key = FolderKey(email, folder);
+        bool changed = _folderStatuses.TryGetValue(key, out MailFolderStatus? previous) && previous != status;
+        _folderStatuses[key] = status;
+        SetFolderUnreadCount(email, folder, status.UnreadCount);
+        return changed;
+    }
 
     private bool ObserveFolder(string email, string folder, uint validity, MailItem? latest) =>
         AdvanceCursor(_folderCursors, (email.ToLowerInvariant(), folder), validity, latest);
@@ -262,7 +316,7 @@ public partial class MainWindow
     private async Task NotifyNewMailAsync(ImapSession session, string email, string folder,
         MailItem item, CancellationToken token)
     {
-        if (_settings.PlaySound) SystemSounds.Asterisk.Play();
+        if (_settings.PlaySound) NotificationSounds.Play();
         if (!_settings.NotifyNewMail) return;
         string preview = "";
         if (_settings.ShowMessagePreview)
@@ -353,6 +407,7 @@ public partial class MainWindow
     {
         if (!_accounts.Any(account => account.Email.Equals(email, StringComparison.OrdinalIgnoreCase))) return;
         _unreadInboxCounts[email] = Math.Max(0, count);
+        SetFolderUnreadCount(email, "INBOX", count);
         UpdateUnreadBadge();
     }
 

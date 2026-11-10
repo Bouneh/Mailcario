@@ -27,6 +27,7 @@ public partial class SettingsWindow : Window
         NotificationsHeading.Text = Localizer.T("notificationSettings");
         NotifyCheck.Content = Localizer.T("enableNotifications");
         SoundCheck.Content = Localizer.T("enableSound");
+        PreviewSoundButton.Content = Localizer.T("listenSound");
         PreviewCheck.Content = Localizer.T("notificationPreview");
         IntervalLabel.Text = Localizer.T("checkInterval");
         UndoSendHeading.Text = Localizer.T("undoSendHeading");
@@ -102,6 +103,8 @@ public partial class SettingsWindow : Window
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    private void PreviewSound_Click(object sender, RoutedEventArgs e) => NotificationSounds.Play();
 
     private void AccountsList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
         RemoveAccountButton.IsEnabled = AccountsList.SelectedItem is MailAccount;

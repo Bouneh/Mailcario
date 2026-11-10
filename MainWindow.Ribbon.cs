@@ -188,6 +188,12 @@ public partial class MainWindow
                 foreach (var key in _folderCursors.Keys.Where(key =>
                              key.Email.Equals(email, StringComparison.OrdinalIgnoreCase)).ToList())
                     _folderCursors.Remove(key);
+                foreach (var key in _folderStatuses.Keys.Where(key =>
+                             key.Email.Equals(email, StringComparison.OrdinalIgnoreCase)).ToList())
+                    _folderStatuses.Remove(key);
+                foreach (var key in _folderUnreadCounts.Keys.Where(key =>
+                             key.Email.Equals(email, StringComparison.OrdinalIgnoreCase)).ToList())
+                    _folderUnreadCounts.Remove(key);
                 _unreadInboxCounts.Remove(email);
             }
             _settings.Save();

@@ -106,8 +106,24 @@ public sealed class MailItem : System.ComponentModel.INotifyPropertyChanged
     }
 }
 
-public sealed class MailFolder
+public sealed class MailFolder : System.ComponentModel.INotifyPropertyChanged
 {
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private int _unreadCount;
+    public int UnreadCount
+    {
+        get => _unreadCount;
+        set
+        {
+            if (_unreadCount == value) return;
+            _unreadCount = Math.Max(0, value);
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(UnreadLabel)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(UnreadVisibility)));
+        }
+    }
+    public string UnreadLabel => UnreadCount > 99 ? "99+" : UnreadCount.ToString();
+    public System.Windows.Visibility UnreadVisibility => UnreadCount > 0
+        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
     public string ServerName { get; init; } = "INBOX";
     public bool IsSent { get; set; }
     public char? Delimiter { get; init; } = '/';
@@ -189,7 +205,9 @@ public sealed record InlineMailImage(string ContentType, byte[] Bytes)
     }
 }
 
-public sealed record InboxSnapshot(uint UidValidity, MailItem? Latest, int UnreadCount);
+public sealed record InboxSnapshot(uint UidValidity, MailItem? Latest, int UnreadCount,
+    int TotalCount = 0, uint UidNext = 0);
+public sealed record MailFolderStatus(uint UidValidity, uint UidNext, int TotalCount, int UnreadCount);
 public sealed record MailPage(IReadOnlyList<MailItem> Messages, int TotalCount, int NextSequence);
 public sealed record MailSearchPage(IReadOnlyList<MailItem> Messages, int TotalCount, int NextIndex);
 
