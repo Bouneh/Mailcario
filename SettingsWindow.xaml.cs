@@ -15,6 +15,9 @@ public partial class SettingsWindow : Window
         WindowTheme.Attach(this);
         Settings = settings.Copy();
         Heading.Text = Localizer.T("clientSettings");
+        DefaultMailHeading.Text = Localizer.T("defaultMailHeading");
+        DefaultMailHint.Text = Localizer.T("defaultMailHint");
+        DefaultMailButton.Content = Localizer.T("openDefaultMailSettings");
         Subtitle.Text = Localizer.T("settingsSubtitle");
         FolderNotificationsHint.Text = Localizer.T("folderNotificationsHint");
         AppearanceHeading.Text = Localizer.T("appearanceSettings");
@@ -105,6 +108,9 @@ public partial class SettingsWindow : Window
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
     private void PreviewSound_Click(object sender, RoutedEventArgs e) => NotificationSounds.Play();
+
+    private void DefaultMailButton_Click(object sender, RoutedEventArgs e) =>
+        DefaultMailSupport.OpenWindowsDefaultApps();
 
     private void AccountsList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
         RemoveAccountButton.IsEnabled = AccountsList.SelectedItem is MailAccount;

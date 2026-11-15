@@ -105,8 +105,7 @@ public static class SafeHtmlRenderer
                     if (seenImages.Add(uri.AbsoluteUri)) downloadableImages.Add(uri);
                     if (loadedImages?.TryGetValue(uri.AbsoluteUri, out var bitmap) == true)
                     {
-                        var image = new Image { Source = bitmap, Stretch = Stretch.Uniform,
-                            MaxWidth = 620, MaxHeight = 1000, HorizontalAlignment = HorizontalAlignment.Left };
+                        var image = CreateSavableImage(bitmap);
                         paragraph.Inlines.Add(new InlineUIContainer(image));
                         continue;
                     }
@@ -116,12 +115,7 @@ public static class SafeHtmlRenderer
                     inlineImageIds.Add(contentId);
                     if (loadedImages?.TryGetValue(contentId, out var embeddedBitmap) == true)
                     {
-                        paragraph.Inlines.Add(new InlineUIContainer(new Image
-                        {
-                            Source = embeddedBitmap, Stretch = Stretch.Uniform,
-                            MaxWidth = 620, MaxHeight = 1000,
-                            HorizontalAlignment = HorizontalAlignment.Left
-                        }));
+                        paragraph.Inlines.Add(new InlineUIContainer(CreateSavableImage(embeddedBitmap)));
                         continue;
                     }
                 }
@@ -193,6 +187,29 @@ public static class SafeHtmlRenderer
         var paragraph = new Paragraph { Margin = new Thickness(0, 0, 0, 10), LineHeight = 23 };
         document.Blocks.Add(paragraph);
         return paragraph;
+    }
+
+    private static Image CreateSavableImage(BitmapSource bitmap)
+    {
+        var image = new Image { Source = bitmap, Stretch = Stretch.Uniform,
+            MaxWidth = 620, MaxHeight = 1000, HorizontalAlignment = HorizontalAlignment.Left };
+        var menu = new ContextMenu();
+        if (Application.Current?.TryFindResource("MailMessageContextMenuStyle") is Style style)
+            menu.Style = style;
+        var save = new MenuItem { Header = Localizer.T("saveImageAs") };
+        if (Application.Current?.TryFindResource("MailMessageMenuItemStyle") is Style itemStyle)
+            save.Style = itemStyle;
+        save.Click += (_, _) =>
+        {
+            Window? owner = Window.GetWindow(image);
+            if (owner is null) return;
+            try { ImageSaveSupport.SaveBitmap(owner, bitmap); }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+            { MessageBox.Show(owner, ex.Message, "Mailcario", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        };
+        menu.Items.Add(save);
+        image.ContextMenu = menu;
+        return image;
     }
 
     private static void AppendText(Paragraph paragraph, string raw, List<(string Name, Uri? Link)> inline)

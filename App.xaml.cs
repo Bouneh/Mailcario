@@ -8,6 +8,7 @@ public partial class App : Application
 {
     private SingleInstanceCoordinator? _singleInstance;
     private bool _activationPending;
+    private string? _pendingMailto;
 
     public App()
     {
@@ -31,15 +32,17 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        _singleInstance = new SingleInstanceCoordinator("Mailcario", () =>
+        string? mailto = e.Args.FirstOrDefault(argument =>
+            argument.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase));
+        _singleInstance = new SingleInstanceCoordinator("Mailcario", payload =>
         {
             try
             {
                 if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
-                    Dispatcher.BeginInvoke(new Action(ActivateExistingWindow));
+                    Dispatcher.BeginInvoke(new Action(() => ActivateExistingWindow(payload)));
             }
             catch (InvalidOperationException) { /* The application is closing. */ }
-        });
+        }, mailto);
         if (!_singleInstance.IsPrimary)
         {
             Shutdown();
@@ -51,13 +54,18 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
         window.StartScheduledSending();
-        if (_activationPending) ActivateExistingWindow();
+        if (_activationPending) ActivateExistingWindow(_pendingMailto);
+        if (mailto is not null) window.OpenMailto(mailto);
     }
 
-    private void ActivateExistingWindow()
+    private void ActivateExistingWindow(string? mailto = null)
     {
-        if (MainWindow is Mailcario.MainWindow window) window.ActivateFromSecondLaunch();
-        else _activationPending = true;
+        if (MainWindow is Mailcario.MainWindow window)
+        {
+            window.ActivateFromSecondLaunch();
+            if (mailto is not null) window.OpenMailto(mailto);
+        }
+        else { _activationPending = true; _pendingMailto = mailto; }
     }
 
     protected override void OnExit(ExitEventArgs e)

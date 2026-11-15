@@ -18,6 +18,89 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--search-and-default-mail-check")
+        {
+            var checkApp = new App();
+            checkApp.InitializeComponent();
+            ThemeManager.Initialize("dark");
+            try
+            {
+                var window = new MainWindow { WindowStartupLocation = WindowStartupLocation.Manual,
+                    Left = -4000, Top = -4000, Width = 1100, Height = 750,
+                    WindowState = WindowState.Normal, ShowInTaskbar = false, ShowActivated = false };
+                var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+                var loaded = typeof(MainWindow).GetMethod("MainWindow_Loaded", flags)!;
+                window.Loaded -= (RoutedEventHandler)Delegate.CreateDelegate(typeof(RoutedEventHandler), window, loaded);
+                var rendered = typeof(MainWindow).GetMethod("MainWindow_ContentRendered", flags)!;
+                window.ContentRendered -= (EventHandler)Delegate.CreateDelegate(typeof(EventHandler), window, rendered);
+                window.Show();
+                window.UpdateLayout();
+                var messages = new List<MailItem>
+                {
+                    new MailItem { Uid = 1, AccountEmail = "test@example.invalid", FolderName = "INBOX",
+                        From = "Zoe <zoe@example.invalid>", Subject = "Alpha", Date = DateTimeOffset.Now },
+                    new MailItem { Uid = 2, AccountEmail = "test@example.invalid", FolderName = "INBOX",
+                        From = "Amy <amy@example.invalid>", Subject = "Beta", Date = DateTimeOffset.Now.AddDays(-1) },
+                    new MailItem { Uid = 3, AccountEmail = "test@example.invalid", FolderName = "INBOX",
+                        From = "Ben <ben@example.invalid>", Subject = "Alpha again", Date = DateTimeOffset.Now.AddDays(-2) }
+                };
+                messages.AddRange(Enumerable.Range(4, 57).Select(uid => new MailItem
+                {
+                    Uid = (uint)uid, AccountEmail = "test@example.invalid", FolderName = "INBOX",
+                    From = $"Sender {uid} <sender{uid}@x.invalid>", Subject = $"Other {uid}",
+                    Date = DateTimeOffset.Now.AddDays(-uid)
+                }));
+                typeof(MainWindow).GetField("_messages", flags)!.SetValue(window, messages);
+                var settings = (ClientSettings)typeof(MainWindow).GetField("_settings", flags)!.GetValue(window)!;
+                settings.SortBy = "date";
+                settings.SortDescending = true;
+                settings.ConversationView = false;
+                var filter = typeof(MainWindow).GetMethod("FilterMessages", flags)!;
+                filter.Invoke(window, null);
+                var searchMessageList = (ListBox)window.FindName("MessageList");
+                bool passed = searchMessageList.Items.Count == messages.Count;
+                var search = (TextBox)window.FindName("SearchBox");
+                search.Text = "A";
+                search.Text = "Al";
+                search.Text = "Alpha";
+                passed &= searchMessageList.Items.Count == 2;
+                search.Clear();
+                passed &= searchMessageList.Items.Count == messages.Count;
+                settings.SortBy = "sender";
+                settings.SortDescending = false;
+                filter.Invoke(window, null); // Reorders items while WPF is grouped by date.
+                passed &= searchMessageList.Items.Count == messages.Count && ReferenceEquals(searchMessageList.Items[0], messages[1]);
+                search.Text = "Alpha";
+                passed &= searchMessageList.Items.Count == 2;
+                search.Text = "Beta";
+                passed &= searchMessageList.Items.Count == 1 && ReferenceEquals(searchMessageList.Items[0], messages[1]);
+                search.Clear();
+                passed &= searchMessageList.Items.Count == messages.Count;
+                window.Close();
+
+                passed &= MailtoRequest.TryParse(
+                    "mailto:alice@example.com?cc=bob%40example.com&bcc=chris%40example.com&subject=Bonjour%20test&body=Salut%20!",
+                    out MailtoRequest? mailto) && mailto is not null &&
+                    mailto.To == "alice@example.com" && mailto.Cc == "bob@example.com" &&
+                    mailto.Bcc == "chris@example.com" && mailto.Subject == "Bonjour test" &&
+                    mailto.Body == "Salut !";
+                passed &= !MailtoRequest.TryParse("mailto:alice@example.com%0D%0AX-Injected:yes", out _);
+
+                const string png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWJ0AAAAASUVORK5CYII=";
+                var images = new Dictionary<string, string> { ["https://example.com/logo.png"] = png };
+                var imageType = typeof(MainWindow).Assembly.GetType("Mailcario.ImageSaveSupport")!;
+                var getImage = imageType.GetMethod("TryGetLoadedImage", BindingFlags.Static | BindingFlags.NonPublic)!;
+                object?[] accepted = [png, images, null];
+                passed &= (bool)getImage.Invoke(null, accepted)! && accepted[2] is not null;
+                object?[] blocked = ["data:image/png;base64,AAAA", images, null];
+                passed &= !(bool)getImage.Invoke(null, blocked)!;
+                Console.WriteLine(passed ? "Grouped search, mailto and image-save checks passed" :
+                    "Grouped search, mailto or image-save check failed");
+                if (!passed) Environment.ExitCode = 1;
+            }
+            finally { ThemeManager.Shutdown(); }
+            return;
+        }
         if (args.Length > 0 && args[0] == "--notification-sound-check")
         {
             var checkApp = new App();
@@ -587,13 +670,21 @@ internal static class Program
         {
             string name = "Preview" + Guid.NewGuid().ToString("N");
             using var activated = new ManualResetEventSlim();
-            using var first = new SingleInstanceCoordinator(name, () => activated.Set());
+            string? received = null;
+            using var first = new SingleInstanceCoordinator(name, payload =>
+            {
+                received = payload;
+                activated.Set();
+            }, null);
             bool secondWasPrimary = Task.Run(() =>
             {
-                using var second = new SingleInstanceCoordinator(name, () => { });
+                using var second = new SingleInstanceCoordinator(name, _ => { },
+                    "mailto:alice@example.com?subject=Test");
                 return second.IsPrimary;
             }).GetAwaiter().GetResult();
-            bool passed = first.IsPrimary && !secondWasPrimary && activated.Wait(TimeSpan.FromSeconds(5));
+            bool passed = first.IsPrimary && !secondWasPrimary && activated.Wait(TimeSpan.FromSeconds(5)) &&
+                received == "mailto:alice@example.com?subject=Test";
+            if (!passed) Console.WriteLine($"primary={first.IsPrimary}, secondPrimary={secondWasPrimary}, payload={received ?? "<none>"}");
             Console.WriteLine(passed ? "Single instance activation check passed" : "Single instance activation check failed");
             if (!passed) Environment.ExitCode = 1;
             return;

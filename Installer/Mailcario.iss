@@ -29,6 +29,7 @@ CloseApplications=yes
 RestartApplications=no
 MinVersion=10.0
 ArchitecturesAllowed=x64compatible
+ChangesAssociations=yes
 
 [Languages]
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
@@ -44,6 +45,16 @@ Source: "deps\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: deleteaf
 [Icons]
 Name: "{group}\Mailcario"; Filename: "{app}\Mailcario.exe"
 Name: "{autodesktop}\Mailcario"; Filename: "{app}\Mailcario.exe"; Tasks: desktopicon
+
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\Mailcario.Mailto"; ValueType: string; ValueName: ""; ValueData: "Mailcario email link"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Mailcario.Mailto"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\Mailcario.Mailto\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\Mailcario.exe,0"
+Root: HKCU; Subkey: "Software\Classes\Mailcario.Mailto\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Mailcario.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Mailcario\Capabilities"; ValueType: string; ValueName: "ApplicationName"; ValueData: "Mailcario"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Mailcario\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Mailcario email client for Windows"
+Root: HKCU; Subkey: "Software\Mailcario\Capabilities\UrlAssociations"; ValueType: string; ValueName: "mailto"; ValueData: "Mailcario.Mailto"
+Root: HKCU; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "Mailcario"; ValueData: "Software\Mailcario\Capabilities"; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; Flags: runhidden; Check: NeedsWebView2

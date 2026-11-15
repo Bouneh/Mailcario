@@ -62,6 +62,15 @@ public partial class ComposeWindow : Window
         ToBox.Focus();
     }
 
+    public void SetAdditionalRecipients(string cc, string bcc)
+    {
+        CcBox.Text = cc;
+        if (bcc.Length == 0) return;
+        BccRow.Height = new GridLength(43);
+        BccBox.Visibility = BccLabel.Visibility = Visibility.Visible;
+        BccBox.Text = bcc;
+    }
+
     private void ApplyLanguage()
     {
         ComposeFileTab.Content = Localizer.T("file");

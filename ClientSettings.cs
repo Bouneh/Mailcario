@@ -9,6 +9,7 @@ public sealed class ClientSettings
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Mailcario", "client-settings.json");
 
     public bool NotifyNewMail { get; set; } = true;
+    public bool DefaultMailPromptShown { get; set; }
     public bool PlaySound { get; set; } = true;
     public bool ShowMessagePreview { get; set; } = true;
     public int CheckIntervalMinutes { get; set; } = 2;

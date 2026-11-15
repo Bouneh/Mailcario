@@ -21,7 +21,7 @@ public partial class MainWindow : Window
     private IReadOnlyList<MailAccount> _accounts = [];
     private MailAccount? _account;
     private string? _password;
-    private readonly ObservableCollection<MailItem> _visibleMessages = [];
+    private readonly ResettableObservableCollection<MailItem> _visibleMessages = [];
     private IReadOnlyList<MailItem> _messages = [];
     private IReadOnlyList<MailItem>? _searchResults;
     private MailItem? _selected;
@@ -69,6 +69,8 @@ public partial class MainWindow : Window
     private readonly string? _initialAccountEmail;
     private readonly string? _initialFolderName;
     private readonly Dictionary<(string Email, string Folder), int> _globalSearchCursors = [];
+    private bool _mailReady;
+    private string? _pendingMailto;
     private sealed record FolderPageCache(IReadOnlyList<MailItem> Messages, int TotalCount, int NextSequence,
         IReadOnlyList<MailItem> SentCandidates, string? SentFolderName, int NextSentSequence);
     private readonly Dictionary<(string Email, string Folder), FolderPageCache> _folderPageCache = [];
@@ -173,6 +175,13 @@ public partial class MainWindow : Window
         UpdateConnectionStatus();
         if (!_secondaryWindow && (_account is null || _password is null) && _localMailStore.ListFolders().Count == 0)
             ShowAccountWindow(_account);
+        if (!_secondaryWindow) DefaultMailSupport.PromptOnFirstRun(this, _settings);
+        _mailReady = true;
+        if (_pendingMailto is { } pending)
+        {
+            _pendingMailto = null;
+            _ = Dispatcher.BeginInvoke(new Action(() => OpenMailto(pending)));
+        }
         if (_account is not null && _password is not null) await RefreshAsync(true);
         if (!_secondaryWindow)
         {
@@ -657,14 +666,13 @@ public partial class MainWindow : Window
             return current;
         }).ToList();
         ConversationSupport.AssignGroups(desired);
-        for (int index = 0; index < desired.Count; index++)
-        {
-            if (index < _visibleMessages.Count && ReferenceEquals(_visibleMessages[index], desired[index])) continue;
-            int existingIndex = _visibleMessages.IndexOf(desired[index]);
-            if (existingIndex >= 0) _visibleMessages.Move(existingIndex, index);
-            else _visibleMessages.Insert(index, desired[index]);
-        }
-        while (_visibleMessages.Count > desired.Count) _visibleMessages.RemoveAt(_visibleMessages.Count - 1);
+        // One Reset lets WPF rebuild its date/conversation groups from the final sequence.
+        // Incremental Move and remove/insert events can leave grouped indexes inconsistent.
+        MailItem[] selectedBefore = MessageList.SelectedItems.OfType<MailItem>().ToArray();
+        if (_visibleMessages.ReplaceWith(desired))
+            foreach (MailItem item in selectedBefore)
+                if (desired.Contains(item) && !MessageList.SelectedItems.Contains(item))
+                    MessageList.SelectedItems.Add(item);
         var view = CollectionViewSource.GetDefaultView(_visibleMessages);
         bool groupByDate = _settings.SortBy == "date";
         if (view.GroupDescriptions is { } groups)
@@ -855,9 +863,32 @@ public partial class MainWindow : Window
         core.Settings.AreHostObjectsAllowed = false;
         core.Settings.IsWebMessageEnabled = false;
         core.Settings.AreDevToolsEnabled = false;
-        core.Settings.AreDefaultContextMenusEnabled = false;
+        core.Settings.AreDefaultContextMenusEnabled = true;
         core.Settings.AreDefaultScriptDialogsEnabled = false;
         core.Settings.IsStatusBarEnabled = false;
+        core.ContextMenuRequested += (_, e) =>
+        {
+            e.Handled = true;
+            if (e.ContextMenuTarget.Kind != CoreWebView2ContextMenuTargetKind.Image ||
+                !ImageSaveSupport.TryGetLoadedImage(e.ContextMenuTarget.SourceUri,
+                    _loadedImageData, out SaveableMailImage? image) || image is null) return;
+            var menu = new ContextMenu
+            {
+                Style = (Style)FindResource("MailMessageContextMenuStyle"),
+                PlacementTarget = HtmlWebView,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint
+            };
+            var save = new MenuItem { Header = Localizer.T("saveImageAs"),
+                Style = (Style)FindResource("MailMessageMenuItemStyle") };
+            save.Click += (_, _) =>
+            {
+                try { ImageSaveSupport.Save(this, image); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
+            };
+            menu.Items.Add(save);
+            menu.IsOpen = true;
+        };
         core.StatusBarTextChanged += (_, _) => ShowLinkTarget(core.StatusBarText, true);
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += (_, e) =>
@@ -1077,8 +1108,18 @@ public partial class MainWindow : Window
         catch (Exception ex) { StatusLabel.Text = Localizer.T("failed") + ": " + ex.Message; }
     }
 
+    internal void OpenMailto(string uri)
+    {
+        if (!MailtoRequest.TryParse(uri, out MailtoRequest? request) || request is null) return;
+        if (!_mailReady) { _pendingMailto = uri; return; }
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        OpenCompose(request.To, request.Subject, request.Body, cc: request.Cc, bcc: request.Bcc);
+    }
+
     private async void OpenCompose(string to = "", string subject = "", string body = "", string? replyToId = null,
-        MailAccount? sourceAccount = null, ComposeDraft? draft = null)
+        MailAccount? sourceAccount = null, ComposeDraft? draft = null, string cc = "", string bcc = "")
     {
         if (sourceAccount is null && (_account is null || _password is null))
         {
@@ -1089,6 +1130,7 @@ public partial class MainWindow : Window
         if (account is null || password is null) return;
         var window = new ComposeWindow(account, password, to, subject, body, replyToId) { Owner = this };
         if (draft is not null) window.RestoreDraft(draft);
+        if (cc.Length > 0 || bcc.Length > 0) window.SetAdditionalRecipients(cc, bcc);
         if (window.ShowDialog() == true)
         {
             if (window.QueuedUndoSendId is { } jobId && window.QueuedUndoDraft is { } undoDraft)
